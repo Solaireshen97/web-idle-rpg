@@ -120,11 +120,15 @@ async function fight() {
 
   const fightResult = JSON.parse(text);
   showPlayerStatus(fightResult.player);
-  const statusText = fightResult.isVictory ? "Yes" : "No";
-  const enemyText = `Enemy: ${fightResult.enemyName} (HP ${fightResult.enemyMaxHp}, ATK ${fightResult.enemyAttack})`;
-  const rewardText = `Gold: +${fightResult.goldReward} | EXP: +${fightResult.experienceReward}`;
+  const statusText = fightResult.enemyDefeated ? "Enemy Defeated" : (fightResult.playerDefeated ? "Player Defeated" : "Ongoing");
+  const enemyText = `Enemy: ${fightResult.enemyName} (ATK ${fightResult.enemyAttack})`;
+  const enemyHpText = `Enemy HP: ${fightResult.enemyCurrentHp}/${fightResult.enemyMaxHp}`;
+  const roundDamageText = `Round Damage -> You: ${fightResult.playerDamageDealt}, Enemy: ${fightResult.enemyDamageDealt}`;
+  const rewardText = fightResult.enemyDefeated
+    ? `Rewards: Gold +${fightResult.goldReward}, EXP +${fightResult.experienceReward}`
+    : "Rewards: none";
   const levelText = fightResult.leveledUp ? ` | LEVEL UP! Lv${fightResult.player.level}` : "";
-  const resultText = `Victory: ${statusText} | ${rewardText}${levelText} | HP: ${fightResult.player.currentHp}/${fightResult.player.maxHp}`;
+  const resultText = `Status: ${statusText} | ${enemyHpText} | ${roundDamageText} | ${rewardText}${levelText} | Player HP: ${fightResult.player.currentHp}/${fightResult.player.maxHp}`;
   fightResultElement.textContent = `${enemyText} | ${resultText} | ${fightResult.summary}`;
   showResult(fightResult);
 }

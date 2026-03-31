@@ -100,34 +100,38 @@ app.MapPost("/api/players/{id:int}/fight", async (GameDbContext dbContext, int i
         return Results.NotFound();
     }
 
-    var enemy = enemyTemplates[Random.Shared.Next(enemyTemplates.Length)];
+    if (!HasCurrentEnemy(player))
+    {
+        AssignCurrentEnemy(player, enemyTemplates[Random.Shared.Next(enemyTemplates.Length)]);
+    }
+
+    var enemy = GetCurrentEnemyState(player);
 
     var playerAttack = Math.Max(1, player.Attack);
     var playerMaxHp = Math.Max(1, player.MaxHp);
     var playerCurrentHp = Math.Min(playerMaxHp, Math.Max(0, player.CurrentHp));
-    var playerHpBeforeFight = playerCurrentHp;
+    var enemyCurrentHp = Math.Max(0, enemy.CurrentHp);
 
-    var enemyHp = enemy.MaxHp;
-    while (playerCurrentHp > 0 && enemyHp > 0)
+    var playerDamageDealt = Math.Min(playerAttack, enemyCurrentHp);
+    enemyCurrentHp -= playerAttack;
+    var enemyDefeated = enemyCurrentHp <= 0;
+
+    var enemyDamageDealt = 0;
+    if (!enemyDefeated)
     {
-        enemyHp -= playerAttack;
-        if (enemyHp <= 0)
-        {
-            break;
-        }
-
+        enemyDamageDealt = Math.Min(enemy.Attack, playerCurrentHp);
         playerCurrentHp -= enemy.Attack;
     }
 
-    var isVictory = enemyHp <= 0;
-    var goldReward = isVictory ? enemy.GoldReward : 0;
-    var expReward = isVictory ? enemy.ExperienceReward : 0;
+    var playerDefeated = playerCurrentHp <= 0;
+    var goldReward = enemyDefeated ? enemy.GoldReward : 0;
+    var expReward = enemyDefeated ? enemy.ExperienceReward : 0;
     var leveledUp = false;
-    if (isVictory)
+    if (enemyDefeated)
     {
         player.Gold += goldReward;
         player.Experience += expReward;
-        player.CurrentHp = playerCurrentHp;
+        player.CurrentHp = Math.Max(0, playerCurrentHp);
 
         while (player.Experience >= ExpPerLevel)
         {
@@ -142,29 +146,44 @@ app.MapPost("/api/players/{id:int}/fight", async (GameDbContext dbContext, int i
         {
             player.CurrentHp = player.MaxHp;
         }
+
+        ClearCurrentEnemy(player);
+    }
+    else if (playerDefeated)
+    {
+        player.CurrentHp = playerMaxHp;
+        ClearCurrentEnemy(player);
     }
     else
     {
-        player.CurrentHp = playerMaxHp;
+        player.CurrentHp = playerCurrentHp;
+        player.CurrentEnemyCurrentHp = enemyCurrentHp;
     }
 
     player.UpdatedAt = DateTime.UtcNow;
 
     await dbContext.SaveChangesAsync();
 
-    var summary = isVictory
-        ? $"{player.Name} defeated {enemy.Name} and earned {goldReward} gold, {expReward} EXP. HP: {playerHpBeforeFight}->{player.CurrentHp}."
+    var summary = enemyDefeated
+        ? $"{player.Name} defeated {enemy.Name} and earned {goldReward} gold, {expReward} EXP."
             + (leveledUp ? $" Level up! Now Lv{player.Level}." : "")
-        : $"{player.Name} was defeated by {enemy.Name}. HP reset to {player.CurrentHp}/{playerMaxHp}.";
+        : playerDefeated
+            ? $"{player.Name} was defeated by {enemy.Name}. HP reset to {player.CurrentHp}/{playerMaxHp}. Enemy was reset."
+            : $"{player.Name} dealt {playerDamageDealt} to {enemy.Name}. {enemy.Name} dealt {enemyDamageDealt}. Enemy HP: {enemyCurrentHp}/{enemy.MaxHp}.";
 
     return Results.Ok(new FightResultDto(
-        isVictory,
+        enemyDefeated,
         goldReward,
         expReward,
         leveledUp,
         enemy.Name,
         enemy.MaxHp,
         enemy.Attack,
+        Math.Max(0, enemyCurrentHp),
+        playerDamageDealt,
+        enemyDamageDealt,
+        enemyDefeated,
+        playerDefeated,
         summary,
         ToPlayerDto(player)));
 });
@@ -189,6 +208,50 @@ static PlayerDto ToPlayerDto(Player player) =>
         player.CurrentEnemyExperienceReward,
         player.CreatedAt,
         player.UpdatedAt);
+
+static bool HasCurrentEnemy(Player player) =>
+    !string.IsNullOrWhiteSpace(player.CurrentEnemyName)
+    && player.CurrentEnemyMaxHp.HasValue
+    && player.CurrentEnemyCurrentHp.HasValue
+    && player.CurrentEnemyAttack.HasValue
+    && player.CurrentEnemyGoldReward.HasValue
+    && player.CurrentEnemyExperienceReward.HasValue;
+
+static CurrentEnemyState GetCurrentEnemyState(Player player)
+{
+    if (!HasCurrentEnemy(player))
+    {
+        throw new InvalidOperationException("Current enemy state is incomplete.");
+    }
+
+    return new CurrentEnemyState(
+        player.CurrentEnemyName!,
+        Math.Max(1, player.CurrentEnemyMaxHp!.Value),
+        Math.Max(0, player.CurrentEnemyCurrentHp!.Value),
+        Math.Max(1, player.CurrentEnemyAttack!.Value),
+        Math.Max(0, player.CurrentEnemyGoldReward!.Value),
+        Math.Max(0, player.CurrentEnemyExperienceReward!.Value));
+}
+
+static void AssignCurrentEnemy(Player player, EnemyTemplate enemy)
+{
+    player.CurrentEnemyName = enemy.Name;
+    player.CurrentEnemyMaxHp = enemy.MaxHp;
+    player.CurrentEnemyCurrentHp = enemy.MaxHp;
+    player.CurrentEnemyAttack = enemy.Attack;
+    player.CurrentEnemyGoldReward = enemy.GoldReward;
+    player.CurrentEnemyExperienceReward = enemy.ExperienceReward;
+}
+
+static void ClearCurrentEnemy(Player player)
+{
+    player.CurrentEnemyName = null;
+    player.CurrentEnemyMaxHp = null;
+    player.CurrentEnemyCurrentHp = null;
+    player.CurrentEnemyAttack = null;
+    player.CurrentEnemyGoldReward = null;
+    player.CurrentEnemyExperienceReward = null;
+}
 
 static void EnsurePlayerSchema(GameDbContext dbContext)
 {
@@ -279,6 +342,14 @@ static void AddPlayerColumnIfMissing(GameDbContext dbContext, HashSet<string> ex
 file sealed record EnemyTemplate(
     string Name,
     int MaxHp,
+    int Attack,
+    int GoldReward,
+    int ExperienceReward);
+
+file sealed record CurrentEnemyState(
+    string Name,
+    int MaxHp,
+    int CurrentHp,
     int Attack,
     int GoldReward,
     int ExperienceReward);
