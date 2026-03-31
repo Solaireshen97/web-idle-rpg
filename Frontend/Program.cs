@@ -37,16 +37,47 @@ app.MapGet("/", () =>
             <button id="addGoldButton" type="button">Add +10 Gold</button>
           </section>
 
-          <h2>Result</h2>
+          <section>
+            <h2>Player Status</h2>
+            <div>Id: <span id="playerStatusId">-</span></div>
+            <div>Name: <span id="playerStatusName">-</span></div>
+            <div>Gold: <span id="playerStatusGold">-</span></div>
+            <div>CreatedAt: <span id="playerStatusCreatedAt">-</span></div>
+            <div>UpdatedAt: <span id="playerStatusUpdatedAt">-</span></div>
+          </section>
+
+          <h2>Debug</h2>
           <pre id="result">No player loaded.</pre>
 
           <script>
             const resultElement = document.getElementById("result");
             const playerIdInput = document.getElementById("playerId");
             const playerNameInput = document.getElementById("playerName");
+            const playerStatusIdElement = document.getElementById("playerStatusId");
+            const playerStatusNameElement = document.getElementById("playerStatusName");
+            const playerStatusGoldElement = document.getElementById("playerStatusGold");
+            const playerStatusCreatedAtElement = document.getElementById("playerStatusCreatedAt");
+            const playerStatusUpdatedAtElement = document.getElementById("playerStatusUpdatedAt");
 
             function showResult(data) {
               resultElement.textContent = JSON.stringify(data, null, 2);
+            }
+
+            function showPlayerStatus(player) {
+              if (!player) {
+                playerStatusIdElement.textContent = "-";
+                playerStatusNameElement.textContent = "-";
+                playerStatusGoldElement.textContent = "-";
+                playerStatusCreatedAtElement.textContent = "-";
+                playerStatusUpdatedAtElement.textContent = "-";
+                return;
+              }
+
+              playerStatusIdElement.textContent = player.id;
+              playerStatusNameElement.textContent = player.name;
+              playerStatusGoldElement.textContent = player.gold;
+              playerStatusCreatedAtElement.textContent = player.createdAt;
+              playerStatusUpdatedAtElement.textContent = player.updatedAt;
             }
 
             async function loadPlayer() {
@@ -55,11 +86,14 @@ app.MapGet("/", () =>
               const text = await response.text();
 
               if (!response.ok) {
+                showPlayerStatus(null);
                 showResult({ error: `Load failed (${response.status})`, detail: text });
                 return;
               }
 
-              showResult(JSON.parse(text));
+              const player = JSON.parse(text);
+              showPlayerStatus(player);
+              showResult(player);
             }
 
             async function createPlayer() {
@@ -72,12 +106,14 @@ app.MapGet("/", () =>
 
               const text = await response.text();
               if (!response.ok) {
+                showPlayerStatus(null);
                 showResult({ error: `Create failed (${response.status})`, detail: text });
                 return;
               }
 
               const player = JSON.parse(text);
               playerIdInput.value = player.id;
+              showPlayerStatus(player);
               showResult(player);
             }
 
@@ -89,11 +125,14 @@ app.MapGet("/", () =>
 
               const text = await response.text();
               if (!response.ok) {
+                showPlayerStatus(null);
                 showResult({ error: `Add gold failed (${response.status})`, detail: text });
                 return;
               }
 
-              showResult(JSON.parse(text));
+              const player = JSON.parse(text);
+              showPlayerStatus(player);
+              showResult(player);
             }
 
             document.getElementById("loadPlayerButton").addEventListener("click", loadPlayer);
@@ -117,7 +156,17 @@ app.MapPost("/api/players", async (IHttpClientFactory httpClientFactory, CreateP
 
     var player = await response.Content.ReadFromJsonAsync<PlayerDto>();
     var serverLocation = response.Headers.Location?.ToString();
-    var location = serverLocation ?? (player is null ? "/api/players" : $"/api/players/{player.Id}");
+    var location = "/api/players";
+    if (player is not null)
+    {
+        location = $"/api/players/{player.Id}";
+    }
+
+    if (!string.IsNullOrWhiteSpace(serverLocation))
+    {
+        location = serverLocation;
+    }
+
     return player is null
         ? Results.StatusCode(StatusCodes.Status502BadGateway)
         : Results.Created(location, player);
