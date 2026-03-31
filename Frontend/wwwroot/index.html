@@ -20,22 +20,29 @@
     <button id="loadPlayerButton" type="button">Load</button>
     <button id="addGoldButton" type="button">Add +10 Gold</button>
     <button id="fightButton" type="button">Fight</button>
+    <button id="restButton" type="button">Rest</button>
   </section>
 
   <section>
     <h2>Player Status</h2>
     <div>Id: <span id="playerStatusId">-</span></div>
     <div>Name: <span id="playerStatusName">-</span></div>
+    <div>Level: <span id="playerStatusLevel">-</span></div>
+    <div>Experience: <span id="playerStatusExperience">-</span></div>
     <div>Gold: <span id="playerStatusGold">-</span></div>
     <div>Attack: <span id="playerStatusAttack">-</span></div>
-    <div>MaxHp: <span id="playerStatusMaxHp">-</span></div>
-    <div>CurrentHp: <span id="playerStatusCurrentHp">-</span></div>
+    <div>HP: <span id="playerStatusCurrentHp">-</span> / <span id="playerStatusMaxHp">-</span></div>
     <div>CreatedAt: <span id="playerStatusCreatedAt">-</span></div>
     <div>UpdatedAt: <span id="playerStatusUpdatedAt">-</span></div>
   </section>
 
   <section>
-    <h2>Fight Result</h2>
+    <h2>Current Enemy</h2>
+    <div id="currentEnemyStatus">No active enemy.</div>
+  </section>
+
+  <section>
+    <h2>Last Round Result</h2>
     <div id="fightResult">No fight yet.</div>
   </section>
 
