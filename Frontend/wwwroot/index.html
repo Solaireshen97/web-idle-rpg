@@ -2,11 +2,13 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Web Idle RPG - Frontend</title>
+  <link rel="stylesheet" href="/style.css" />
 </head>
 <body>
-  <h1>Web Idle RPG Frontend</h1>
-  <p>Minimal player view using current Server API.</p>
+  <h1>Web Idle RPG</h1>
+  <p>Minimal idle RPG — fight, rest, level up.</p>
 
   <section>
     <h2>Create Player</h2>
@@ -18,32 +20,40 @@
     <h2>Load Player</h2>
     <input id="playerId" type="number" min="1" value="1" />
     <button id="loadPlayerButton" type="button">Load</button>
-    <button id="addGoldButton" type="button">Add +10 Gold</button>
-    <button id="fightButton" type="button">Fight</button>
-    <button id="restButton" type="button">Rest</button>
   </section>
 
   <section>
     <h2>Player Status</h2>
-    <div>Id: <span id="playerStatusId">-</span></div>
-    <div>Name: <span id="playerStatusName">-</span></div>
-    <div>Level: <span id="playerStatusLevel">-</span></div>
-    <div>Experience: <span id="playerStatusExperience">-</span></div>
-    <div>Gold: <span id="playerStatusGold">-</span></div>
-    <div>Attack: <span id="playerStatusAttack">-</span></div>
-    <div>MaxHp: <span id="playerStatusMaxHp">-</span></div>
-    <div>CurrentHp: <span id="playerStatusCurrentHp">-</span></div>
-    <div>CreatedAt: <span id="playerStatusCreatedAt">-</span></div>
-    <div>UpdatedAt: <span id="playerStatusUpdatedAt">-</span></div>
+    <div class="status-grid">
+      <span class="label">Id</span><span id="playerStatusId">-</span>
+      <span class="label">Name</span><span id="playerStatusName">-</span>
+      <span class="label">Level</span><span id="playerStatusLevel">-</span>
+      <span class="label">EXP</span><span id="playerStatusExperience">-</span>
+      <span class="label">Gold</span><span id="playerStatusGold">-</span>
+      <span class="label">Attack</span><span id="playerStatusAttack">-</span>
+      <span class="label">HP</span><span id="playerStatusCurrentHp">-</span>
+      <span class="label">Max HP</span><span id="playerStatusMaxHp">-</span>
+      <span class="label">Created</span><span id="playerStatusCreatedAt">-</span>
+      <span class="label">Updated</span><span id="playerStatusUpdatedAt">-</span>
+    </div>
   </section>
 
   <section>
-    <h2>Fight Result</h2>
-    <div id="fightResult">No fight yet.</div>
+    <h2>Actions</h2>
+    <button id="fightButton" type="button">Fight</button>
+    <button id="restButton" type="button">Rest</button>
+    <button id="addGoldButton" type="button">Add +10 Gold</button>
   </section>
 
-  <h2>Debug</h2>
-  <pre id="result">No player loaded.</pre>
+  <section>
+    <h2>Last Result</h2>
+    <div id="fightResult">No action yet.</div>
+  </section>
+
+  <details>
+    <summary>Debug JSON</summary>
+    <pre id="result">No player loaded.</pre>
+  </details>
 
   <script src="/app.js"></script>
 </body>
