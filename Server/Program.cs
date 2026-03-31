@@ -2,6 +2,8 @@ using Microsoft.EntityFrameworkCore;
 using Server.Data;
 using Shared.Players;
 
+const int GoldIncrementAmount = 10;
+
 var builder = WebApplication.CreateBuilder(args);
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection")
     ?? throw new InvalidOperationException("Missing connection string 'DefaultConnection'.");
@@ -45,6 +47,21 @@ app.MapGet("/api/players/{id:int}", async (GameDbContext dbContext, int id) =>
 {
     var player = await dbContext.Players.FindAsync(id);
     return player is null ? Results.NotFound() : Results.Ok(ToPlayerDto(player));
+});
+
+app.MapPost("/api/players/{id:int}/gold", async (GameDbContext dbContext, int id) =>
+{
+    var player = await dbContext.Players.FindAsync(id);
+    if (player is null)
+    {
+        return Results.NotFound();
+    }
+
+    player.Gold += GoldIncrementAmount;
+    player.UpdatedAt = DateTime.UtcNow;
+
+    await dbContext.SaveChangesAsync();
+    return Results.Ok(ToPlayerDto(player));
 });
 
 app.Run();

@@ -34,6 +34,7 @@ app.MapGet("/", () =>
             <h2>Load Player</h2>
             <input id="playerId" type="number" min="1" value="1" />
             <button id="loadPlayerButton" type="button">Load</button>
+            <button id="addGoldButton" type="button">Add +10 Gold</button>
           </section>
 
           <h2>Result</h2>
@@ -80,8 +81,24 @@ app.MapGet("/", () =>
               showResult(player);
             }
 
+            async function addGold() {
+              const id = playerIdInput.value;
+              const response = await fetch(`/api/players/${encodeURIComponent(id)}/gold`, {
+                method: "POST"
+              });
+
+              const text = await response.text();
+              if (!response.ok) {
+                showResult({ error: `Add gold failed (${response.status})`, detail: text });
+                return;
+              }
+
+              showResult(JSON.parse(text));
+            }
+
             document.getElementById("loadPlayerButton").addEventListener("click", loadPlayer);
             document.getElementById("createPlayerButton").addEventListener("click", createPlayer);
+            document.getElementById("addGoldButton").addEventListener("click", addGold);
           </script>
         </body>
         </html>
@@ -99,7 +116,8 @@ app.MapPost("/api/players", async (IHttpClientFactory httpClientFactory, CreateP
     }
 
     var player = await response.Content.ReadFromJsonAsync<PlayerDto>();
-    var location = response.Headers.Location?.ToString() ?? (player is null ? "/api/players" : $"/api/players/{player.Id}");
+    var serverLocation = response.Headers.Location?.ToString();
+    var location = serverLocation ?? (player is null ? "/api/players" : $"/api/players/{player.Id}");
     return player is null
         ? Results.StatusCode(StatusCodes.Status502BadGateway)
         : Results.Created(location, player);
@@ -109,6 +127,27 @@ app.MapGet("/api/players/{id:int}", async (IHttpClientFactory httpClientFactory,
 {
     var serverApi = httpClientFactory.CreateClient("ServerApi");
     var response = await serverApi.GetAsync($"/api/players/{id}");
+
+    if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+    {
+        return Results.NotFound();
+    }
+
+    if (!response.IsSuccessStatusCode)
+    {
+        return await ForwardResponseAsContentAsync(response);
+    }
+
+    var player = await response.Content.ReadFromJsonAsync<PlayerDto>();
+    return player is null
+        ? Results.StatusCode(StatusCodes.Status502BadGateway)
+        : Results.Ok(player);
+});
+
+app.MapPost("/api/players/{id:int}/gold", async (IHttpClientFactory httpClientFactory, int id) =>
+{
+    var serverApi = httpClientFactory.CreateClient("ServerApi");
+    var response = await serverApi.PostAsync($"/api/players/{id}/gold", content: null);
 
     if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
     {
