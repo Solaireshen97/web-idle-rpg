@@ -20,4 +20,32 @@ using (var scope = app.Services.CreateScope())
 
 app.MapGet("/api/ping", () => Results.Ok(new { message = "pong" }));
 
+app.MapPost("/api/players", async (GameDbContext dbContext, CreatePlayerRequest request) =>
+{
+    var name = request.Name?.Trim();
+    if (string.IsNullOrWhiteSpace(name))
+    {
+        return Results.BadRequest(new { message = "Player name is required." });
+    }
+
+    var player = new Player
+    {
+        Name = name,
+        Gold = 0
+    };
+
+    dbContext.Players.Add(player);
+    await dbContext.SaveChangesAsync();
+
+    return Results.Created($"/api/players/{player.Id}", player);
+});
+
+app.MapGet("/api/players/{id:int}", async (GameDbContext dbContext, int id) =>
+{
+    var player = await dbContext.Players.FindAsync(id);
+    return player is null ? Results.NotFound() : Results.Ok(player);
+});
+
 app.Run();
+
+public sealed record CreatePlayerRequest(string Name);
