@@ -3,6 +3,9 @@ using Server.Data;
 using Shared.Players;
 
 const int GoldIncrementAmount = 10;
+const int FightEnemyMaxHp = 8;
+const int FightEnemyAttack = 2;
+const int FightVictoryGoldReward = 5;
 
 var builder = WebApplication.CreateBuilder(args);
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection")
@@ -64,6 +67,51 @@ app.MapPost("/api/players/{id:int}/gold", async (GameDbContext dbContext, int id
     return Results.Ok(ToPlayerDto(player));
 });
 
+app.MapPost("/api/players/{id:int}/fight", async (GameDbContext dbContext, int id) =>
+{
+    var player = await dbContext.Players.FindAsync(id);
+    if (player is null)
+    {
+        return Results.NotFound();
+    }
+
+    var playerAttack = Math.Max(1, player.Attack);
+    player.MaxHp = Math.Max(1, player.MaxHp);
+    player.CurrentHp = Math.Min(player.MaxHp, Math.Max(0, player.CurrentHp));
+
+    var enemyHp = FightEnemyMaxHp;
+    while (player.CurrentHp > 0 && enemyHp > 0)
+    {
+        enemyHp -= playerAttack;
+        if (enemyHp <= 0)
+        {
+            break;
+        }
+
+        player.CurrentHp -= FightEnemyAttack;
+    }
+
+    var isVictory = enemyHp <= 0;
+    var goldReward = isVictory ? FightVictoryGoldReward : 0;
+    if (isVictory)
+    {
+        player.Gold += goldReward;
+    }
+    else
+    {
+        player.CurrentHp = player.MaxHp;
+    }
+
+    player.UpdatedAt = DateTime.UtcNow;
+
+    await dbContext.SaveChangesAsync();
+
+    return Results.Ok(new FightResultDto(
+        isVictory,
+        goldReward,
+        ToPlayerDto(player)));
+});
+
 app.Run();
 
 static PlayerDto ToPlayerDto(Player player) =>
@@ -71,5 +119,8 @@ static PlayerDto ToPlayerDto(Player player) =>
         player.Id,
         player.Name,
         player.Gold,
+        player.Attack,
+        player.MaxHp,
+        player.CurrentHp,
         player.CreatedAt,
         player.UpdatedAt);
