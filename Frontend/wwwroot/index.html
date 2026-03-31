@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Web Idle RPG - Frontend</title>
+</head>
+<body>
+  <h1>Web Idle RPG Frontend</h1>
+  <p>Minimal player view using current Server API.</p>
+
+  <section>
+    <h2>Create Player</h2>
+    <input id="playerName" type="text" placeholder="player name" />
+    <button id="createPlayerButton" type="button">Create</button>
+  </section>
+
+  <section>
+    <h2>Load Player</h2>
+    <input id="playerId" type="number" min="1" value="1" />
+    <button id="loadPlayerButton" type="button">Load</button>
+    <button id="addGoldButton" type="button">Add +10 Gold</button>
+    <button id="fightButton" type="button">Fight</button>
+  </section>
+
+  <section>
+    <h2>Player Status</h2>
+    <div>Id: <span id="playerStatusId">-</span></div>
+    <div>Name: <span id="playerStatusName">-</span></div>
+    <div>Gold: <span id="playerStatusGold">-</span></div>
+    <div>Attack: <span id="playerStatusAttack">-</span></div>
+    <div>MaxHp: <span id="playerStatusMaxHp">-</span></div>
+    <div>CurrentHp: <span id="playerStatusCurrentHp">-</span></div>
+    <div>CreatedAt: <span id="playerStatusCreatedAt">-</span></div>
+    <div>UpdatedAt: <span id="playerStatusUpdatedAt">-</span></div>
+  </section>
+
+  <section>
+    <h2>Fight Result</h2>
+    <div id="fightResult">No fight yet.</div>
+  </section>
+
+  <h2>Debug</h2>
+  <pre id="result">No player loaded.</pre>
+
+  <script src="/app.js"></script>
+</body>
+</html>
