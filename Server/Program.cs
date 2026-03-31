@@ -1,3 +1,4 @@
+using System.Data;
 using Microsoft.EntityFrameworkCore;
 using Server.Data;
 using Shared.Players;
@@ -6,12 +7,13 @@ const int GoldIncrementAmount = 10;
 const int ExpPerLevel = 10;
 const int LevelUpAttackBonus = 1;
 const int LevelUpMaxHpBonus = 5;
+const string PlayersTableName = "Players";
 
 var enemyTemplates = new[]
 {
-    new { Name = "Training Slime", MaxHp = 8, Attack = 2, GoldReward = 5, ExpReward = 5 },
-    new { Name = "Wolf", MaxHp = 12, Attack = 3, GoldReward = 8, ExpReward = 7 },
-    new { Name = "Goblin", MaxHp = 15, Attack = 4, GoldReward = 10, ExpReward = 10 },
+    new EnemyTemplate("Training Slime", 8, 2, 5, 5),
+    new EnemyTemplate("Wolf", 12, 3, 8, 7),
+    new EnemyTemplate("Goblin", 15, 4, 10, 10),
 };
 
 var builder = WebApplication.CreateBuilder(args);
@@ -29,6 +31,7 @@ using (var scope = app.Services.CreateScope())
 {
     var dbContext = scope.ServiceProvider.GetRequiredService<GameDbContext>();
     dbContext.Database.EnsureCreated();
+    EnsurePlayerSchema(dbContext);
 }
 
 app.MapGet("/api/ping", () => Results.Ok(new { message = "pong" }));
@@ -97,18 +100,23 @@ app.MapPost("/api/players/{id:int}/fight", async (GameDbContext dbContext, int i
         return Results.NotFound();
     }
 
-    var enemy = enemyTemplates[Random.Shared.Next(enemyTemplates.Length)];
+    if (!HasCurrentEnemy(player))
+    {
+        AssignCurrentEnemy(player, enemyTemplates[Random.Shared.Next(enemyTemplates.Length)]);
+    }
+
+    var enemy = GetCurrentEnemyState(player);
 
     var playerAttack = Math.Max(1, player.Attack);
     var playerMaxHp = Math.Max(1, player.MaxHp);
     var playerCurrentHp = Math.Min(playerMaxHp, Math.Max(0, player.CurrentHp));
     var playerHpBeforeFight = playerCurrentHp;
 
-    var enemyHp = enemy.MaxHp;
-    while (playerCurrentHp > 0 && enemyHp > 0)
+    var enemyCurrentHp = enemy.CurrentHp;
+    while (playerCurrentHp > 0 && enemyCurrentHp > 0)
     {
-        enemyHp -= playerAttack;
-        if (enemyHp <= 0)
+        enemyCurrentHp -= playerAttack;
+        if (enemyCurrentHp <= 0)
         {
             break;
         }
@@ -116,9 +124,9 @@ app.MapPost("/api/players/{id:int}/fight", async (GameDbContext dbContext, int i
         playerCurrentHp -= enemy.Attack;
     }
 
-    var isVictory = enemyHp <= 0;
+    var isVictory = enemyCurrentHp <= 0;
     var goldReward = isVictory ? enemy.GoldReward : 0;
-    var expReward = isVictory ? enemy.ExpReward : 0;
+    var expReward = isVictory ? enemy.ExperienceReward : 0;
     var leveledUp = false;
     if (isVictory)
     {
@@ -145,6 +153,7 @@ app.MapPost("/api/players/{id:int}/fight", async (GameDbContext dbContext, int i
         player.CurrentHp = playerMaxHp;
     }
 
+    ClearCurrentEnemy(player);
     player.UpdatedAt = DateTime.UtcNow;
 
     await dbContext.SaveChangesAsync();
@@ -178,5 +187,156 @@ static PlayerDto ToPlayerDto(Player player) =>
         player.Attack,
         player.MaxHp,
         player.CurrentHp,
+        player.CurrentEnemyName,
+        player.CurrentEnemyMaxHp,
+        player.CurrentEnemyCurrentHp,
+        player.CurrentEnemyAttack,
+        player.CurrentEnemyGoldReward,
+        player.CurrentEnemyExperienceReward,
         player.CreatedAt,
         player.UpdatedAt);
+
+static bool HasCurrentEnemy(Player player) =>
+    !string.IsNullOrWhiteSpace(player.CurrentEnemyName)
+    && player.CurrentEnemyMaxHp.HasValue
+    && player.CurrentEnemyCurrentHp.HasValue
+    && player.CurrentEnemyAttack.HasValue
+    && player.CurrentEnemyGoldReward.HasValue
+    && player.CurrentEnemyExperienceReward.HasValue;
+
+static void AssignCurrentEnemy(Player player, EnemyTemplate enemy)
+{
+    player.CurrentEnemyName = enemy.Name;
+    player.CurrentEnemyMaxHp = enemy.MaxHp;
+    player.CurrentEnemyCurrentHp = enemy.MaxHp;
+    player.CurrentEnemyAttack = enemy.Attack;
+    player.CurrentEnemyGoldReward = enemy.GoldReward;
+    player.CurrentEnemyExperienceReward = enemy.ExperienceReward;
+}
+
+static void ClearCurrentEnemy(Player player)
+{
+    player.CurrentEnemyName = null;
+    player.CurrentEnemyMaxHp = null;
+    player.CurrentEnemyCurrentHp = null;
+    player.CurrentEnemyAttack = null;
+    player.CurrentEnemyGoldReward = null;
+    player.CurrentEnemyExperienceReward = null;
+}
+
+static void EnsurePlayerSchema(GameDbContext dbContext)
+{
+    var existingColumns = GetPlayerColumnNames(dbContext);
+    AddPlayerColumnIfMissing(dbContext, existingColumns, "Level");
+    AddPlayerColumnIfMissing(dbContext, existingColumns, "Experience");
+    AddPlayerColumnIfMissing(dbContext, existingColumns, "CurrentEnemyName");
+    AddPlayerColumnIfMissing(dbContext, existingColumns, "CurrentEnemyMaxHp");
+    AddPlayerColumnIfMissing(dbContext, existingColumns, "CurrentEnemyCurrentHp");
+    AddPlayerColumnIfMissing(dbContext, existingColumns, "CurrentEnemyAttack");
+    AddPlayerColumnIfMissing(dbContext, existingColumns, "CurrentEnemyGoldReward");
+    AddPlayerColumnIfMissing(dbContext, existingColumns, "CurrentEnemyExperienceReward");
+}
+
+static HashSet<string> GetPlayerColumnNames(GameDbContext dbContext)
+{
+    var connection = dbContext.Database.GetDbConnection();
+    var shouldClose = connection.State != ConnectionState.Open;
+    if (shouldClose)
+    {
+        connection.Open();
+    }
+
+    try
+    {
+        using var command = connection.CreateCommand();
+        command.CommandText = $@"PRAGMA table_info(""{PlayersTableName}"")";
+
+        using var reader = command.ExecuteReader();
+        var columnNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        while (reader.Read())
+        {
+            columnNames.Add(reader.GetString(1));
+        }
+
+        return columnNames;
+    }
+    finally
+    {
+        if (shouldClose)
+        {
+            connection.Close();
+        }
+    }
+}
+
+static void AddPlayerColumnIfMissing(GameDbContext dbContext, HashSet<string> existingColumns, string columnName)
+{
+    if (existingColumns.Contains(columnName))
+    {
+        return;
+    }
+
+    var connection = dbContext.Database.GetDbConnection();
+    var shouldClose = connection.State != ConnectionState.Open;
+    if (shouldClose)
+    {
+        connection.Open();
+    }
+
+    try
+    {
+        using var command = connection.CreateCommand();
+        command.CommandText = columnName switch
+        {
+            "Level" => @"ALTER TABLE ""Players"" ADD COLUMN ""Level"" INTEGER NOT NULL DEFAULT 1",
+            "Experience" => @"ALTER TABLE ""Players"" ADD COLUMN ""Experience"" INTEGER NOT NULL DEFAULT 0",
+            "CurrentEnemyName" => @"ALTER TABLE ""Players"" ADD COLUMN ""CurrentEnemyName"" TEXT NULL",
+            "CurrentEnemyMaxHp" => @"ALTER TABLE ""Players"" ADD COLUMN ""CurrentEnemyMaxHp"" INTEGER NULL",
+            "CurrentEnemyCurrentHp" => @"ALTER TABLE ""Players"" ADD COLUMN ""CurrentEnemyCurrentHp"" INTEGER NULL",
+            "CurrentEnemyAttack" => @"ALTER TABLE ""Players"" ADD COLUMN ""CurrentEnemyAttack"" INTEGER NULL",
+            "CurrentEnemyGoldReward" => @"ALTER TABLE ""Players"" ADD COLUMN ""CurrentEnemyGoldReward"" INTEGER NULL",
+            "CurrentEnemyExperienceReward" => @"ALTER TABLE ""Players"" ADD COLUMN ""CurrentEnemyExperienceReward"" INTEGER NULL",
+            _ => throw new InvalidOperationException($"Unsupported Players column '{columnName}'.")
+        };
+        command.ExecuteNonQuery();
+        existingColumns.Add(columnName);
+    }
+    finally
+    {
+        if (shouldClose)
+        {
+            connection.Close();
+        }
+    }
+}
+
+static CurrentEnemyState GetCurrentEnemyState(Player player)
+{
+    if (!HasCurrentEnemy(player))
+    {
+        throw new InvalidOperationException("Current enemy state is incomplete.");
+    }
+
+    return new CurrentEnemyState(
+        player.CurrentEnemyName!,
+        player.CurrentEnemyMaxHp!.Value,
+        player.CurrentEnemyCurrentHp!.Value,
+        player.CurrentEnemyAttack!.Value,
+        player.CurrentEnemyGoldReward!.Value,
+        player.CurrentEnemyExperienceReward!.Value);
+}
+
+file sealed record CurrentEnemyState(
+    string Name,
+    int MaxHp,
+    int CurrentHp,
+    int Attack,
+    int GoldReward,
+    int ExperienceReward);
+
+file sealed record EnemyTemplate(
+    string Name,
+    int MaxHp,
+    int Attack,
+    int GoldReward,
+    int ExperienceReward);

@@ -9,5 +9,11 @@ public sealed record PlayerDto(
     int Attack,
     int MaxHp,
     int CurrentHp,
+    string? CurrentEnemyName,
+    int? CurrentEnemyMaxHp,
+    int? CurrentEnemyCurrentHp,
+    int? CurrentEnemyAttack,
+    int? CurrentEnemyGoldReward,
+    int? CurrentEnemyExperienceReward,
     DateTime CreatedAt,
     DateTime UpdatedAt);

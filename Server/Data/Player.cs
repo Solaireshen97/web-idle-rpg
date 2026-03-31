@@ -25,6 +25,12 @@ public class Player
     public int Attack { get; set; }
     public int MaxHp { get; set; }
     public int CurrentHp { get; set; }
+    public string? CurrentEnemyName { get; set; }
+    public int? CurrentEnemyMaxHp { get; set; }
+    public int? CurrentEnemyCurrentHp { get; set; }
+    public int? CurrentEnemyAttack { get; set; }
+    public int? CurrentEnemyGoldReward { get; set; }
+    public int? CurrentEnemyExperienceReward { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
 }
