@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Server.Data;
+using Shared.Players;
 
 var builder = WebApplication.CreateBuilder(args);
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection")
@@ -30,22 +31,28 @@ app.MapPost("/api/players", async (GameDbContext dbContext, CreatePlayerRequest 
 
     var player = new Player
     {
-        Name = name,
-        Gold = 0
+        Name = name
     };
 
     dbContext.Players.Add(player);
     await dbContext.SaveChangesAsync();
 
-    return Results.Created($"/api/players/{player.Id}", player);
+    var playerDto = ToPlayerDto(player);
+    return Results.Created($"/api/players/{player.Id}", playerDto);
 });
 
 app.MapGet("/api/players/{id:int}", async (GameDbContext dbContext, int id) =>
 {
     var player = await dbContext.Players.FindAsync(id);
-    return player is null ? Results.NotFound() : Results.Ok(player);
+    return player is null ? Results.NotFound() : Results.Ok(ToPlayerDto(player));
 });
 
 app.Run();
 
-public sealed record CreatePlayerRequest(string Name);
+static PlayerDto ToPlayerDto(Player player) =>
+    new(
+        player.Id,
+        player.Name,
+        player.Gold,
+        player.CreatedAt,
+        player.UpdatedAt);
