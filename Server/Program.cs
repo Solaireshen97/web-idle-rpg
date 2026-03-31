@@ -7,6 +7,10 @@ const string FightEnemyName = "Training Slime";
 const int FightEnemyMaxHp = 8;
 const int FightEnemyAttack = 2;
 const int FightVictoryGoldReward = 5;
+const int FightVictoryExpReward = 5;
+const int ExpPerLevel = 10;
+const int LevelUpAttackBonus = 1;
+const int LevelUpMaxHpBonus = 5;
 
 var builder = WebApplication.CreateBuilder(args);
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection")
@@ -95,10 +99,27 @@ app.MapPost("/api/players/{id:int}/fight", async (GameDbContext dbContext, int i
 
     var isVictory = enemyHp <= 0;
     var goldReward = isVictory ? FightVictoryGoldReward : 0;
+    var expReward = isVictory ? FightVictoryExpReward : 0;
+    var leveledUp = false;
     if (isVictory)
     {
         player.Gold += goldReward;
+        player.Experience += expReward;
         player.CurrentHp = playerCurrentHp;
+
+        while (player.Experience >= ExpPerLevel)
+        {
+            player.Experience -= ExpPerLevel;
+            player.Level += 1;
+            player.Attack += LevelUpAttackBonus;
+            player.MaxHp += LevelUpMaxHpBonus;
+            leveledUp = true;
+        }
+
+        if (leveledUp)
+        {
+            player.CurrentHp = player.MaxHp;
+        }
     }
     else
     {
@@ -110,12 +131,15 @@ app.MapPost("/api/players/{id:int}/fight", async (GameDbContext dbContext, int i
     await dbContext.SaveChangesAsync();
 
     var summary = isVictory
-        ? $"{player.Name} defeated {FightEnemyName} and earned {goldReward} gold. HP: {playerHpBeforeFight}->{player.CurrentHp}."
+        ? $"{player.Name} defeated {FightEnemyName} and earned {goldReward} gold, {expReward} EXP. HP: {playerHpBeforeFight}->{player.CurrentHp}."
+            + (leveledUp ? $" Level up! Now Lv{player.Level}." : "")
         : $"{player.Name} was defeated by {FightEnemyName}. HP reset to {player.CurrentHp}/{playerMaxHp}.";
 
     return Results.Ok(new FightResultDto(
         isVictory,
         goldReward,
+        expReward,
+        leveledUp,
         FightEnemyName,
         FightEnemyMaxHp,
         FightEnemyAttack,
@@ -130,6 +154,8 @@ static PlayerDto ToPlayerDto(Player player) =>
         player.Id,
         player.Name,
         player.Gold,
+        player.Level,
+        player.Experience,
         player.Attack,
         player.MaxHp,
         player.CurrentHp,

@@ -4,6 +4,8 @@ const playerNameInput = document.getElementById("playerName");
 const playerStatusIdElement = document.getElementById("playerStatusId");
 const playerStatusNameElement = document.getElementById("playerStatusName");
 const playerStatusGoldElement = document.getElementById("playerStatusGold");
+const playerStatusLevelElement = document.getElementById("playerStatusLevel");
+const playerStatusExperienceElement = document.getElementById("playerStatusExperience");
 const playerStatusAttackElement = document.getElementById("playerStatusAttack");
 const playerStatusMaxHpElement = document.getElementById("playerStatusMaxHp");
 const playerStatusCurrentHpElement = document.getElementById("playerStatusCurrentHp");
@@ -19,6 +21,8 @@ function showPlayerStatus(player) {
   if (!player) {
     playerStatusIdElement.textContent = "-";
     playerStatusNameElement.textContent = "-";
+    playerStatusLevelElement.textContent = "-";
+    playerStatusExperienceElement.textContent = "-";
     playerStatusGoldElement.textContent = "-";
     playerStatusAttackElement.textContent = "-";
     playerStatusMaxHpElement.textContent = "-";
@@ -30,6 +34,8 @@ function showPlayerStatus(player) {
 
   playerStatusIdElement.textContent = player.id;
   playerStatusNameElement.textContent = player.name;
+  playerStatusLevelElement.textContent = player.level;
+  playerStatusExperienceElement.textContent = player.experience;
   playerStatusGoldElement.textContent = player.gold;
   playerStatusAttackElement.textContent = player.attack;
   playerStatusMaxHpElement.textContent = player.maxHp;
@@ -116,7 +122,9 @@ async function fight() {
   showPlayerStatus(fightResult.player);
   const statusText = fightResult.isVictory ? "Yes" : "No";
   const enemyText = `Enemy: ${fightResult.enemyName} (HP ${fightResult.enemyMaxHp}, ATK ${fightResult.enemyAttack})`;
-  const resultText = `Victory: ${statusText} | Gold Reward: ${fightResult.goldReward} | Player HP: ${fightResult.player.currentHp}/${fightResult.player.maxHp}`;
+  const rewardText = `Gold: +${fightResult.goldReward} | EXP: +${fightResult.experienceReward}`;
+  const levelText = fightResult.leveledUp ? ` | LEVEL UP! Lv${fightResult.player.level}` : "";
+  const resultText = `Victory: ${statusText} | ${rewardText}${levelText} | HP: ${fightResult.player.currentHp}/${fightResult.player.maxHp}`;
   fightResultElement.textContent = `${enemyText} | ${resultText} | ${fightResult.summary}`;
   showResult(fightResult);
 }
