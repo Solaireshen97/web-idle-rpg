@@ -3,14 +3,16 @@ using Server.Data;
 using Shared.Players;
 
 const int GoldIncrementAmount = 10;
-const string FightEnemyName = "Training Slime";
-const int FightEnemyMaxHp = 8;
-const int FightEnemyAttack = 2;
-const int FightVictoryGoldReward = 5;
-const int FightVictoryExpReward = 5;
 const int ExpPerLevel = 10;
 const int LevelUpAttackBonus = 1;
 const int LevelUpMaxHpBonus = 5;
+
+var enemyTemplates = new[]
+{
+    new { Name = "Training Slime", MaxHp = 8, Attack = 2, GoldReward = 5, ExpReward = 5 },
+    new { Name = "Wolf", MaxHp = 12, Attack = 3, GoldReward = 8, ExpReward = 7 },
+    new { Name = "Goblin", MaxHp = 15, Attack = 4, GoldReward = 10, ExpReward = 10 },
+};
 
 var builder = WebApplication.CreateBuilder(args);
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection")
@@ -80,12 +82,14 @@ app.MapPost("/api/players/{id:int}/fight", async (GameDbContext dbContext, int i
         return Results.NotFound();
     }
 
+    var enemy = enemyTemplates[Random.Shared.Next(enemyTemplates.Length)];
+
     var playerAttack = Math.Max(1, player.Attack);
     var playerMaxHp = Math.Max(1, player.MaxHp);
     var playerCurrentHp = Math.Min(playerMaxHp, Math.Max(0, player.CurrentHp));
     var playerHpBeforeFight = playerCurrentHp;
 
-    var enemyHp = FightEnemyMaxHp;
+    var enemyHp = enemy.MaxHp;
     while (playerCurrentHp > 0 && enemyHp > 0)
     {
         enemyHp -= playerAttack;
@@ -94,12 +98,12 @@ app.MapPost("/api/players/{id:int}/fight", async (GameDbContext dbContext, int i
             break;
         }
 
-        playerCurrentHp -= FightEnemyAttack;
+        playerCurrentHp -= enemy.Attack;
     }
 
     var isVictory = enemyHp <= 0;
-    var goldReward = isVictory ? FightVictoryGoldReward : 0;
-    var expReward = isVictory ? FightVictoryExpReward : 0;
+    var goldReward = isVictory ? enemy.GoldReward : 0;
+    var expReward = isVictory ? enemy.ExpReward : 0;
     var leveledUp = false;
     if (isVictory)
     {
@@ -131,18 +135,18 @@ app.MapPost("/api/players/{id:int}/fight", async (GameDbContext dbContext, int i
     await dbContext.SaveChangesAsync();
 
     var summary = isVictory
-        ? $"{player.Name} defeated {FightEnemyName} and earned {goldReward} gold, {expReward} EXP. HP: {playerHpBeforeFight}->{player.CurrentHp}."
+        ? $"{player.Name} defeated {enemy.Name} and earned {goldReward} gold, {expReward} EXP. HP: {playerHpBeforeFight}->{player.CurrentHp}."
             + (leveledUp ? $" Level up! Now Lv{player.Level}." : "")
-        : $"{player.Name} was defeated by {FightEnemyName}. HP reset to {player.CurrentHp}/{playerMaxHp}.";
+        : $"{player.Name} was defeated by {enemy.Name}. HP reset to {player.CurrentHp}/{playerMaxHp}.";
 
     return Results.Ok(new FightResultDto(
         isVictory,
         goldReward,
         expReward,
         leveledUp,
-        FightEnemyName,
-        FightEnemyMaxHp,
-        FightEnemyAttack,
+        enemy.Name,
+        enemy.MaxHp,
+        enemy.Attack,
         summary,
         ToPlayerDto(player)));
 });
