@@ -74,6 +74,21 @@ app.MapPost("/api/players/{id:int}/gold", async (GameDbContext dbContext, int id
     return Results.Ok(ToPlayerDto(player));
 });
 
+app.MapPost("/api/players/{id:int}/rest", async (GameDbContext dbContext, int id) =>
+{
+    var player = await dbContext.Players.FindAsync(id);
+    if (player is null)
+    {
+        return Results.NotFound();
+    }
+
+    player.CurrentHp = player.MaxHp;
+    player.UpdatedAt = DateTime.UtcNow;
+
+    await dbContext.SaveChangesAsync();
+    return Results.Ok(ToPlayerDto(player));
+});
+
 app.MapPost("/api/players/{id:int}/fight", async (GameDbContext dbContext, int id) =>
 {
     var player = await dbContext.Players.FindAsync(id);

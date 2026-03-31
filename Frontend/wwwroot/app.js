@@ -129,7 +129,28 @@ async function fight() {
   showResult(fightResult);
 }
 
+async function rest() {
+  const id = playerIdInput.value;
+  const response = await fetch(`/api/players/${encodeURIComponent(id)}/rest`, {
+    method: "POST"
+  });
+
+  const text = await response.text();
+  if (!response.ok) {
+    showPlayerStatus(null);
+    fightResultElement.textContent = "Rest failed.";
+    showResult({ error: `Rest failed (${response.status})`, detail: text });
+    return;
+  }
+
+  const player = JSON.parse(text);
+  showPlayerStatus(player);
+  fightResultElement.textContent = `${player.name} rested and recovered to full HP (${player.currentHp}/${player.maxHp}).`;
+  showResult(player);
+}
+
 document.getElementById("loadPlayerButton").addEventListener("click", loadPlayer);
 document.getElementById("createPlayerButton").addEventListener("click", createPlayer);
 document.getElementById("addGoldButton").addEventListener("click", addGold);
 document.getElementById("fightButton").addEventListener("click", fight);
+document.getElementById("restButton").addEventListener("click", rest);

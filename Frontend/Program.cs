@@ -84,6 +84,27 @@ app.MapPost("/api/players/{id:int}/gold", async (IHttpClientFactory httpClientFa
         : Results.Ok(player);
 });
 
+app.MapPost("/api/players/{id:int}/rest", async (IHttpClientFactory httpClientFactory, int id) =>
+{
+    var serverApi = httpClientFactory.CreateClient("ServerApi");
+    var response = await serverApi.PostAsync($"/api/players/{id}/rest", content: null);
+
+    if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+    {
+        return Results.NotFound();
+    }
+
+    if (!response.IsSuccessStatusCode)
+    {
+        return await ForwardResponseAsContentAsync(response);
+    }
+
+    var player = await response.Content.ReadFromJsonAsync<PlayerDto>();
+    return player is null
+        ? Results.StatusCode(StatusCodes.Status502BadGateway)
+        : Results.Ok(player);
+});
+
 app.MapPost("/api/players/{id:int}/fight", async (IHttpClientFactory httpClientFactory, int id) =>
 {
     var serverApi = httpClientFactory.CreateClient("ServerApi");
