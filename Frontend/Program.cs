@@ -175,7 +175,10 @@ app.MapGet("/", () =>
 
               const fightResult = JSON.parse(text);
               showPlayerStatus(fightResult.player);
-              fightResultElement.textContent = `Victory: ${fightResult.isVictory ? "Yes" : "No"}, Gold Reward: ${fightResult.goldReward}`;
+              const statusText = fightResult.isVictory ? "Yes" : "No";
+              const enemyText = `Enemy: ${fightResult.enemyName} (HP ${fightResult.enemyMaxHp}, ATK ${fightResult.enemyAttack})`;
+              const resultText = `Victory: ${statusText} | Gold Reward: ${fightResult.goldReward} | Player HP: ${fightResult.player.currentHp}/${fightResult.player.maxHp}`;
+              fightResultElement.textContent = `${enemyText} | ${resultText} | ${fightResult.summary}`;
               showResult(fightResult);
             }
 

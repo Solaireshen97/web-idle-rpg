@@ -3,6 +3,7 @@ using Server.Data;
 using Shared.Players;
 
 const int GoldIncrementAmount = 10;
+const string FightEnemyName = "Training Slime";
 const int FightEnemyMaxHp = 8;
 const int FightEnemyAttack = 2;
 const int FightVictoryGoldReward = 5;
@@ -76,11 +77,12 @@ app.MapPost("/api/players/{id:int}/fight", async (GameDbContext dbContext, int i
     }
 
     var playerAttack = Math.Max(1, player.Attack);
-    player.MaxHp = Math.Max(1, player.MaxHp);
-    player.CurrentHp = Math.Min(player.MaxHp, Math.Max(0, player.CurrentHp));
+    var playerMaxHp = Math.Max(1, player.MaxHp);
+    var playerCurrentHp = Math.Min(playerMaxHp, Math.Max(0, player.CurrentHp));
+    var playerHpBeforeFight = playerCurrentHp;
 
     var enemyHp = FightEnemyMaxHp;
-    while (player.CurrentHp > 0 && enemyHp > 0)
+    while (playerCurrentHp > 0 && enemyHp > 0)
     {
         enemyHp -= playerAttack;
         if (enemyHp <= 0)
@@ -88,7 +90,7 @@ app.MapPost("/api/players/{id:int}/fight", async (GameDbContext dbContext, int i
             break;
         }
 
-        player.CurrentHp -= FightEnemyAttack;
+        playerCurrentHp -= FightEnemyAttack;
     }
 
     var isVictory = enemyHp <= 0;
@@ -96,19 +98,28 @@ app.MapPost("/api/players/{id:int}/fight", async (GameDbContext dbContext, int i
     if (isVictory)
     {
         player.Gold += goldReward;
+        player.CurrentHp = playerCurrentHp;
     }
     else
     {
-        player.CurrentHp = player.MaxHp;
+        player.CurrentHp = playerMaxHp;
     }
 
     player.UpdatedAt = DateTime.UtcNow;
 
     await dbContext.SaveChangesAsync();
 
+    var summary = isVictory
+        ? $"{player.Name} defeated {FightEnemyName} and earned {goldReward} gold. HP: {playerHpBeforeFight}->{player.CurrentHp}."
+        : $"{player.Name} was defeated by {FightEnemyName}. HP reset to {player.CurrentHp}/{playerMaxHp}.";
+
     return Results.Ok(new FightResultDto(
         isVictory,
         goldReward,
+        FightEnemyName,
+        FightEnemyMaxHp,
+        FightEnemyAttack,
+        summary,
         ToPlayerDto(player)));
 });
 
