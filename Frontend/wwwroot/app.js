@@ -15,6 +15,10 @@ const currentEnemyNameElement = document.getElementById("currentEnemyName");
 const currentEnemyHpElement = document.getElementById("currentEnemyHp");
 const currentEnemyAttackElement = document.getElementById("currentEnemyAttack");
 const fightResultElement = document.getElementById("fightResult");
+const autoFightStatusElement = document.getElementById("autoFightStatus");
+const autoFightIntervalMs = 1000;
+let autoFightTimerId = null;
+let autoFightTickInProgress = false;
 
 function showResult(data) {
   resultElement.textContent = JSON.stringify(data, null, 2);
@@ -179,8 +183,51 @@ async function rest() {
   showResult(player);
 }
 
+function setAutoFightStatus(isRunning) {
+  autoFightStatusElement.textContent = isRunning ? "Auto Fight: Running" : "Auto Fight: Stopped";
+}
+
+function startAutoFight() {
+  if (autoFightTimerId !== null) {
+    return;
+  }
+
+  setAutoFightStatus(true);
+  autoFightTimerId = setInterval(async () => {
+    if (autoFightTickInProgress) {
+      console.warn("Skipped auto-fight tick: previous request still in progress.");
+      return;
+    }
+
+    autoFightTickInProgress = true;
+    try {
+      await fight();
+    } catch (error) {
+      stopAutoFight();
+      fightResultElement.textContent = "Auto fight stopped due to request error.";
+      showResult({ error: "Auto fight request failed.", detail: String(error) });
+    } finally {
+      autoFightTickInProgress = false;
+    }
+  }, autoFightIntervalMs);
+}
+
+function stopAutoFight() {
+  if (autoFightTimerId === null) {
+    setAutoFightStatus(false);
+    return;
+  }
+
+  clearInterval(autoFightTimerId);
+  autoFightTimerId = null;
+  autoFightTickInProgress = false;
+  setAutoFightStatus(false);
+}
+
 document.getElementById("loadPlayerButton").addEventListener("click", loadPlayer);
 document.getElementById("createPlayerButton").addEventListener("click", createPlayer);
 document.getElementById("addGoldButton").addEventListener("click", addGold);
 document.getElementById("fightButton").addEventListener("click", fight);
 document.getElementById("restButton").addEventListener("click", rest);
+document.getElementById("startAutoFightButton").addEventListener("click", startAutoFight);
+document.getElementById("stopAutoFightButton").addEventListener("click", stopAutoFight);
