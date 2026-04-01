@@ -9,6 +9,7 @@ const int BaseExpPerLevel = 10;
 const int ExpPerLevelGrowth = 5;
 const int LevelUpAttackBonus = 1;
 const int LevelUpMaxHpBonus = 5;
+const int DefeatSurvivalHp = 1;
 const string PlayersTableName = "Players";
 
 var enemyTemplates = new[]
@@ -166,7 +167,7 @@ app.MapPost("/api/players/{id:int}/fight", async (GameDbContext dbContext, int i
     }
     else if (playerDefeated)
     {
-        player.CurrentHp = playerMaxHp;
+        player.CurrentHp = DefeatSurvivalHp;
         ClearCurrentEnemy(player);
     }
     else
@@ -183,7 +184,7 @@ app.MapPost("/api/players/{id:int}/fight", async (GameDbContext dbContext, int i
         ? $"{player.Name} defeated {enemy.Name} and earned {goldReward} gold, {expReward} EXP, 1 Food."
             + (leveledUp ? $" Level up! Now Lv{player.Level}." : "")
         : playerDefeated
-            ? $"{player.Name} was defeated by {enemy.Name}. HP reset to {player.CurrentHp}/{playerMaxHp}. Enemy was reset."
+            ? $"{player.Name} was defeated by {enemy.Name}. Enemy was reset. HP is now {player.CurrentHp}/{playerMaxHp}. Use Food before continuing."
             : $"{player.Name} dealt {playerDamageDealt} to {enemy.Name}. {enemy.Name} dealt {enemyDamageDealt}. Enemy HP: {enemyCurrentHp}/{enemy.MaxHp}.";
 
     return Results.Ok(new FightResultDto(

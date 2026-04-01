@@ -165,6 +165,10 @@ async function fight() {
   const levelText = fightResult.leveledUp ? ` | LEVEL UP! Lv${fightResult.player.level}` : "";
   const resultText = `Status: ${statusText} | ${enemyHpText} | ${roundDamageText} | ${rewardText}${levelText} | Player HP: ${fightResult.player.currentHp}/${fightResult.player.maxHp}`;
   fightResultElement.textContent = `${enemyText} | ${resultText} | ${fightResult.summary}`;
+  if (fightResult.playerDefeated && autoFightTimerId !== null) {
+    stopAutoFight();
+    fightResultElement.textContent = `${fightResultElement.textContent} | Auto Fight stopped: player defeated. Use Food before continuing.`;
+  }
   showResult(fightResult);
 }
 
