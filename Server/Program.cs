@@ -4,6 +4,7 @@ using Server.Data;
 using Shared.Players;
 
 const int GoldIncrementAmount = 10;
+const int FoodHealAmount = 10;
 const int ExpPerLevel = 10;
 const int LevelUpAttackBonus = 1;
 const int LevelUpMaxHpBonus = 5;
@@ -77,7 +78,7 @@ app.MapPost("/api/players/{id:int}/gold", async (GameDbContext dbContext, int id
     return Results.Ok(ToPlayerDto(player));
 });
 
-app.MapPost("/api/players/{id:int}/rest", async (GameDbContext dbContext, int id) =>
+app.MapPost("/api/players/{id:int}/use-food", async (GameDbContext dbContext, int id) =>
 {
     var player = await dbContext.Players.FindAsync(id);
     if (player is null)
@@ -85,7 +86,13 @@ app.MapPost("/api/players/{id:int}/rest", async (GameDbContext dbContext, int id
         return Results.NotFound();
     }
 
-    player.CurrentHp = player.MaxHp;
+    if (player.Food <= 0)
+    {
+        return Results.BadRequest(new { message = "Not enough food." });
+    }
+
+    player.Food -= 1;
+    player.CurrentHp = Math.Min(player.MaxHp, player.CurrentHp + FoodHealAmount);
     player.UpdatedAt = DateTime.UtcNow;
 
     await dbContext.SaveChangesAsync();
@@ -131,6 +138,7 @@ app.MapPost("/api/players/{id:int}/fight", async (GameDbContext dbContext, int i
     {
         player.Gold += goldReward;
         player.Experience += expReward;
+        player.Food += 1;
         player.CurrentHp = Math.Max(0, playerCurrentHp);
 
         while (player.Experience >= ExpPerLevel)
@@ -165,7 +173,7 @@ app.MapPost("/api/players/{id:int}/fight", async (GameDbContext dbContext, int i
     await dbContext.SaveChangesAsync();
 
     var summary = enemyDefeated
-        ? $"{player.Name} defeated {enemy.Name} and earned {goldReward} gold, {expReward} EXP."
+        ? $"{player.Name} defeated {enemy.Name} and earned {goldReward} gold, {expReward} EXP, 1 Food."
             + (leveledUp ? $" Level up! Now Lv{player.Level}." : "")
         : playerDefeated
             ? $"{player.Name} was defeated by {enemy.Name}. HP reset to {player.CurrentHp}/{playerMaxHp}. Enemy was reset."
@@ -197,6 +205,7 @@ static PlayerDto ToPlayerDto(Player player) =>
         player.Gold,
         player.Level,
         player.Experience,
+        player.Food,
         player.Attack,
         player.MaxHp,
         player.CurrentHp,
@@ -258,6 +267,7 @@ static void EnsurePlayerSchema(GameDbContext dbContext)
     var existingColumns = GetPlayerColumnNames(dbContext);
     AddPlayerColumnIfMissing(dbContext, existingColumns, "Level");
     AddPlayerColumnIfMissing(dbContext, existingColumns, "Experience");
+    AddPlayerColumnIfMissing(dbContext, existingColumns, "Food");
     AddPlayerColumnIfMissing(dbContext, existingColumns, "CurrentEnemyName");
     AddPlayerColumnIfMissing(dbContext, existingColumns, "CurrentEnemyMaxHp");
     AddPlayerColumnIfMissing(dbContext, existingColumns, "CurrentEnemyCurrentHp");
@@ -319,6 +329,7 @@ static void AddPlayerColumnIfMissing(GameDbContext dbContext, HashSet<string> ex
         {
             "Level" => @"ALTER TABLE ""Players"" ADD COLUMN ""Level"" INTEGER NOT NULL DEFAULT 1",
             "Experience" => @"ALTER TABLE ""Players"" ADD COLUMN ""Experience"" INTEGER NOT NULL DEFAULT 0",
+            "Food" => @"ALTER TABLE ""Players"" ADD COLUMN ""Food"" INTEGER NOT NULL DEFAULT 3",
             "CurrentEnemyName" => @"ALTER TABLE ""Players"" ADD COLUMN ""CurrentEnemyName"" TEXT NULL",
             "CurrentEnemyMaxHp" => @"ALTER TABLE ""Players"" ADD COLUMN ""CurrentEnemyMaxHp"" INTEGER NULL",
             "CurrentEnemyCurrentHp" => @"ALTER TABLE ""Players"" ADD COLUMN ""CurrentEnemyCurrentHp"" INTEGER NULL",

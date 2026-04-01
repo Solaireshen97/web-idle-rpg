@@ -4,6 +4,7 @@ const playerNameInput = document.getElementById("playerName");
 const playerStatusIdElement = document.getElementById("playerStatusId");
 const playerStatusNameElement = document.getElementById("playerStatusName");
 const playerStatusGoldElement = document.getElementById("playerStatusGold");
+const playerStatusFoodElement = document.getElementById("playerStatusFood");
 const playerStatusLevelElement = document.getElementById("playerStatusLevel");
 const playerStatusExperienceElement = document.getElementById("playerStatusExperience");
 const playerStatusAttackElement = document.getElementById("playerStatusAttack");
@@ -33,6 +34,7 @@ function showPlayerStatus(player) {
     playerStatusLevelElement.textContent = "-";
     playerStatusExperienceElement.textContent = "-";
     playerStatusGoldElement.textContent = "-";
+    playerStatusFoodElement.textContent = "-";
     playerStatusAttackElement.textContent = "-";
     playerStatusMaxHpElement.textContent = "-";
     playerStatusCurrentHpElement.textContent = "-";
@@ -46,6 +48,7 @@ function showPlayerStatus(player) {
   playerStatusLevelElement.textContent = player.level;
   playerStatusExperienceElement.textContent = player.experience;
   playerStatusGoldElement.textContent = player.gold;
+  playerStatusFoodElement.textContent = player.food;
   playerStatusAttackElement.textContent = player.attack;
   playerStatusMaxHpElement.textContent = player.maxHp;
   playerStatusCurrentHpElement.textContent = player.currentHp;
@@ -165,25 +168,41 @@ async function fight() {
   showResult(fightResult);
 }
 
-async function rest() {
+async function useFood() {
   const id = playerIdInput.value;
-  const response = await fetch(`/api/players/${encodeURIComponent(id)}/rest`, {
+  const hpBeforeUseFood = Number.parseInt(playerStatusCurrentHpElement.textContent ?? "", 10);
+  const response = await fetch(`/api/players/${encodeURIComponent(id)}/use-food`, {
     method: "POST"
   });
 
   const text = await response.text();
   if (!response.ok) {
-    showPlayerStatus(null);
-    showCurrentEnemy(null);
-    fightResultElement.textContent = "Rest failed.";
-    showResult({ error: `Rest failed (${response.status})`, detail: text });
+    let message = "Use food failed.";
+    try {
+      const errorPayload = JSON.parse(text);
+      if (errorPayload?.message) {
+        message = errorPayload.message;
+      }
+    } catch {
+      // keep fallback message
+    }
+
+    fightResultElement.textContent = message;
+    showResult({ error: `Use food failed (${response.status})`, detail: text });
     return;
   }
 
   const player = JSON.parse(text);
   showPlayerStatus(player);
   showCurrentEnemy(player);
-  fightResultElement.textContent = `${player.name} rested and recovered to full HP (${player.currentHp}/${player.maxHp}).`;
+  const recoveredHp = Number.isFinite(hpBeforeUseFood)
+    ? Math.max(0, player.currentHp - hpBeforeUseFood)
+    : null;
+  if (recoveredHp === null) {
+    fightResultElement.textContent = `${player.name} used 1 Food. Current HP: ${player.currentHp}/${player.maxHp}.`;
+  } else {
+    fightResultElement.textContent = `${player.name} used 1 Food and recovered ${recoveredHp} HP. Current HP: ${player.currentHp}/${player.maxHp}.`;
+  }
   showResult(player);
 }
 
@@ -234,7 +253,7 @@ document.getElementById("loadPlayerButton").addEventListener("click", loadPlayer
 document.getElementById("createPlayerButton").addEventListener("click", createPlayer);
 document.getElementById("addGoldButton").addEventListener("click", addGold);
 document.getElementById("fightButton").addEventListener("click", fight);
-document.getElementById("restButton").addEventListener("click", rest);
+document.getElementById("useFoodButton").addEventListener("click", useFood);
 startAutoFightButton.addEventListener("click", startAutoFight);
 stopAutoFightButton.addEventListener("click", stopAutoFight);
 setAutoFightStatus(false);

@@ -6,6 +6,7 @@ public sealed record PlayerDto(
     int Gold,
     int Level,
     int Experience,
+    int Food,
     int Attack,
     int MaxHp,
     int CurrentHp,

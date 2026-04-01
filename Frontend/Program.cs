@@ -84,10 +84,10 @@ app.MapPost("/api/players/{id:int}/gold", async (IHttpClientFactory httpClientFa
         : Results.Ok(player);
 });
 
-app.MapPost("/api/players/{id:int}/rest", async (IHttpClientFactory httpClientFactory, int id) =>
+app.MapPost("/api/players/{id:int}/use-food", async (IHttpClientFactory httpClientFactory, int id) =>
 {
     var serverApi = httpClientFactory.CreateClient("ServerApi");
-    var response = await serverApi.PostAsync($"/api/players/{id}/rest", content: null);
+    var response = await serverApi.PostAsync($"/api/players/{id}/use-food", content: null);
 
     if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
     {
