@@ -5,7 +5,8 @@ using Shared.Players;
 
 const int GoldIncrementAmount = 10;
 const int FoodHealAmount = 10;
-const int ExpPerLevel = 10;
+const int BaseExpPerLevel = 10;
+const int ExpPerLevelGrowth = 5;
 const int LevelUpAttackBonus = 1;
 const int LevelUpMaxHpBonus = 5;
 const string PlayersTableName = "Players";
@@ -141,9 +142,15 @@ app.MapPost("/api/players/{id:int}/fight", async (GameDbContext dbContext, int i
         player.Food += 1;
         player.CurrentHp = Math.Max(0, playerCurrentHp);
 
-        while (player.Experience >= ExpPerLevel)
+        while (true)
         {
-            player.Experience -= ExpPerLevel;
+            var requiredExpForNextLevel = GetRequiredExpForNextLevel(player.Level);
+            if (player.Experience < requiredExpForNextLevel)
+            {
+                break;
+            }
+
+            player.Experience -= requiredExpForNextLevel;
             player.Level += 1;
             player.Attack += LevelUpAttackBonus;
             player.MaxHp += LevelUpMaxHpBonus;
@@ -261,6 +268,9 @@ static void ClearCurrentEnemy(Player player)
     player.CurrentEnemyGoldReward = null;
     player.CurrentEnemyExperienceReward = null;
 }
+
+static int GetRequiredExpForNextLevel(int currentLevel) =>
+    BaseExpPerLevel + (currentLevel - 1) * ExpPerLevelGrowth;
 
 static void EnsurePlayerSchema(GameDbContext dbContext)
 {
