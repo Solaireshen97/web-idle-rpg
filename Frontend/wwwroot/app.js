@@ -16,6 +16,8 @@ const currentEnemyHpElement = document.getElementById("currentEnemyHp");
 const currentEnemyAttackElement = document.getElementById("currentEnemyAttack");
 const fightResultElement = document.getElementById("fightResult");
 const autoFightStatusElement = document.getElementById("autoFightStatus");
+const startAutoFightButton = document.getElementById("startAutoFightButton");
+const stopAutoFightButton = document.getElementById("stopAutoFightButton");
 const autoFightIntervalMs = 1000;
 let autoFightTimerId = null;
 let autoFightTickInProgress = false;
@@ -65,6 +67,7 @@ function showCurrentEnemy(player) {
 }
 
 async function loadPlayer() {
+  stopAutoFight();
   const id = playerIdInput.value;
   const response = await fetch(`/api/players/${encodeURIComponent(id)}`);
   const text = await response.text();
@@ -84,6 +87,7 @@ async function loadPlayer() {
 }
 
 async function createPlayer() {
+  stopAutoFight();
   const name = playerNameInput.value.trim();
   const response = await fetch("/api/players", {
     method: "POST",
@@ -185,6 +189,8 @@ async function rest() {
 
 function setAutoFightStatus(isRunning) {
   autoFightStatusElement.textContent = isRunning ? "Auto Fight: Running" : "Auto Fight: Stopped";
+  startAutoFightButton.disabled = isRunning;
+  stopAutoFightButton.disabled = !isRunning;
 }
 
 function startAutoFight() {
@@ -229,5 +235,6 @@ document.getElementById("createPlayerButton").addEventListener("click", createPl
 document.getElementById("addGoldButton").addEventListener("click", addGold);
 document.getElementById("fightButton").addEventListener("click", fight);
 document.getElementById("restButton").addEventListener("click", rest);
-document.getElementById("startAutoFightButton").addEventListener("click", startAutoFight);
-document.getElementById("stopAutoFightButton").addEventListener("click", stopAutoFight);
+startAutoFightButton.addEventListener("click", startAutoFight);
+stopAutoFightButton.addEventListener("click", stopAutoFight);
+setAutoFightStatus(false);

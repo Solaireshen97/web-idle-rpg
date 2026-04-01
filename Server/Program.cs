@@ -11,9 +11,9 @@ const string PlayersTableName = "Players";
 
 var enemyTemplates = new[]
 {
-    new EnemyTemplate("Training Slime", 8, 2, 5, 5),
-    new EnemyTemplate("Wolf", 12, 3, 8, 7),
-    new EnemyTemplate("Goblin", 15, 4, 10, 10),
+    new EnemyTemplate("Training Slime", 12, 2, 5, 5),
+    new EnemyTemplate("Wolf", 18, 3, 9, 8),
+    new EnemyTemplate("Goblin", 26, 4, 12, 11),
 };
 
 var builder = WebApplication.CreateBuilder(args);
