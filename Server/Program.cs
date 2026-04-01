@@ -14,9 +14,9 @@ const string PlayersTableName = "Players";
 
 var enemyTemplates = new[]
 {
-    new EnemyTemplate("Training Slime", 12, 2, 5, 5),
-    new EnemyTemplate("Wolf", 18, 3, 9, 8),
-    new EnemyTemplate("Goblin", 26, 4, 12, 11),
+    new EnemyTemplate("Training Slime", 24, 2, 5, 5),
+    new EnemyTemplate("Wolf", 36, 3, 9, 8),
+    new EnemyTemplate("Goblin", 52, 4, 12, 11),
 };
 
 var builder = WebApplication.CreateBuilder(args);
@@ -142,6 +142,7 @@ app.MapPost("/api/players/{id:int}/fight", async (GameDbContext dbContext, int i
         player.Experience += expReward;
         player.Food += 1;
         player.CurrentHp = Math.Max(0, playerCurrentHp);
+        var levelUpHpRecovery = 0;
 
         while (true)
         {
@@ -155,12 +156,13 @@ app.MapPost("/api/players/{id:int}/fight", async (GameDbContext dbContext, int i
             player.Level += 1;
             player.Attack += LevelUpAttackBonus;
             player.MaxHp += LevelUpMaxHpBonus;
+            levelUpHpRecovery += LevelUpMaxHpBonus;
             leveledUp = true;
         }
 
         if (leveledUp)
         {
-            player.CurrentHp = player.MaxHp;
+            player.CurrentHp = Math.Min(player.MaxHp, player.CurrentHp + levelUpHpRecovery);
         }
 
         ClearCurrentEnemy(player);
