@@ -11,6 +11,9 @@ const playerStatusMaxHpElement = document.getElementById("playerStatusMaxHp");
 const playerStatusCurrentHpElement = document.getElementById("playerStatusCurrentHp");
 const playerStatusCreatedAtElement = document.getElementById("playerStatusCreatedAt");
 const playerStatusUpdatedAtElement = document.getElementById("playerStatusUpdatedAt");
+const currentEnemyNameElement = document.getElementById("currentEnemyName");
+const currentEnemyHpElement = document.getElementById("currentEnemyHp");
+const currentEnemyAttackElement = document.getElementById("currentEnemyAttack");
 const fightResultElement = document.getElementById("fightResult");
 
 function showResult(data) {
@@ -44,6 +47,19 @@ function showPlayerStatus(player) {
   playerStatusUpdatedAtElement.textContent = player.updatedAt;
 }
 
+function showCurrentEnemy(player) {
+  if (!player || !player.currentEnemyName) {
+    currentEnemyNameElement.textContent = "No active enemy";
+    currentEnemyHpElement.textContent = "-";
+    currentEnemyAttackElement.textContent = "-";
+    return;
+  }
+
+  currentEnemyNameElement.textContent = player.currentEnemyName;
+  currentEnemyHpElement.textContent = `${player.currentEnemyCurrentHp}/${player.currentEnemyMaxHp}`;
+  currentEnemyAttackElement.textContent = player.currentEnemyAttack;
+}
+
 async function loadPlayer() {
   const id = playerIdInput.value;
   const response = await fetch(`/api/players/${encodeURIComponent(id)}`);
@@ -51,6 +67,7 @@ async function loadPlayer() {
 
   if (!response.ok) {
     showPlayerStatus(null);
+    showCurrentEnemy(null);
     fightResultElement.textContent = "Load failed.";
     showResult({ error: `Load failed (${response.status})`, detail: text });
     return;
@@ -58,6 +75,7 @@ async function loadPlayer() {
 
   const player = JSON.parse(text);
   showPlayerStatus(player);
+  showCurrentEnemy(player);
   showResult(player);
 }
 
@@ -72,6 +90,7 @@ async function createPlayer() {
   const text = await response.text();
   if (!response.ok) {
     showPlayerStatus(null);
+    showCurrentEnemy(null);
     fightResultElement.textContent = "Create failed.";
     showResult({ error: `Create failed (${response.status})`, detail: text });
     return;
@@ -80,6 +99,7 @@ async function createPlayer() {
   const player = JSON.parse(text);
   playerIdInput.value = player.id;
   showPlayerStatus(player);
+  showCurrentEnemy(player);
   fightResultElement.textContent = "Player created.";
   showResult(player);
 }
@@ -93,6 +113,7 @@ async function addGold() {
   const text = await response.text();
   if (!response.ok) {
     showPlayerStatus(null);
+    showCurrentEnemy(null);
     fightResultElement.textContent = "Add gold failed.";
     showResult({ error: `Add gold failed (${response.status})`, detail: text });
     return;
@@ -100,6 +121,7 @@ async function addGold() {
 
   const player = JSON.parse(text);
   showPlayerStatus(player);
+  showCurrentEnemy(player);
   fightResultElement.textContent = "Gold +10 applied.";
   showResult(player);
 }
@@ -113,6 +135,7 @@ async function fight() {
   const text = await response.text();
   if (!response.ok) {
     showPlayerStatus(null);
+    showCurrentEnemy(null);
     fightResultElement.textContent = "Fight failed.";
     showResult({ error: `Fight failed (${response.status})`, detail: text });
     return;
@@ -120,6 +143,7 @@ async function fight() {
 
   const fightResult = JSON.parse(text);
   showPlayerStatus(fightResult.player);
+  showCurrentEnemy(fightResult.player);
   const statusText = fightResult.enemyDefeated ? "Enemy Defeated" : (fightResult.playerDefeated ? "Player Defeated" : "Ongoing");
   const enemyText = `Enemy: ${fightResult.enemyName} (ATK ${fightResult.enemyAttack})`;
   const enemyHpText = `Enemy HP: ${fightResult.enemyCurrentHp}/${fightResult.enemyMaxHp}`;
@@ -142,6 +166,7 @@ async function rest() {
   const text = await response.text();
   if (!response.ok) {
     showPlayerStatus(null);
+    showCurrentEnemy(null);
     fightResultElement.textContent = "Rest failed.";
     showResult({ error: `Rest failed (${response.status})`, detail: text });
     return;
@@ -149,6 +174,7 @@ async function rest() {
 
   const player = JSON.parse(text);
   showPlayerStatus(player);
+  showCurrentEnemy(player);
   fightResultElement.textContent = `${player.name} rested and recovered to full HP (${player.currentHp}/${player.maxHp}).`;
   showResult(player);
 }
