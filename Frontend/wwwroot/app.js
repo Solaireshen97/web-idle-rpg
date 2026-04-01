@@ -19,6 +19,8 @@ const fightResultElement = document.getElementById("fightResult");
 const autoFightStatusElement = document.getElementById("autoFightStatus");
 const startAutoFightButton = document.getElementById("startAutoFightButton");
 const stopAutoFightButton = document.getElementById("stopAutoFightButton");
+const autoUseFoodCheckbox = document.getElementById("autoUseFoodCheckbox");
+const autoUseFoodStatusElement = document.getElementById("autoUseFoodStatus");
 const autoFightIntervalMs = 1000;
 let autoFightTimerId = null;
 let autoFightTickInProgress = false;
@@ -208,6 +210,37 @@ async function useFood() {
     fightResultElement.textContent = `${player.name} used 1 Food and recovered ${recoveredHp} HP. Current HP: ${player.currentHp}/${player.maxHp}.`;
   }
   showResult(player);
+  return player;
+}
+
+function setAutoUseFoodStatus() {
+  autoUseFoodStatusElement.textContent = autoUseFoodCheckbox.checked
+    ? "Auto Use Food: On"
+    : "Auto Use Food: Off";
+}
+
+function shouldAutoUseFood(player) {
+  if (!player) {
+    return false;
+  }
+
+  if (autoFightTimerId === null) {
+    return false;
+  }
+
+  if (!autoUseFoodCheckbox.checked) {
+    return false;
+  }
+
+  if (!Number.isFinite(player.currentHp) || !Number.isFinite(player.maxHp) || !Number.isFinite(player.food)) {
+    return false;
+  }
+
+  if (player.food <= 0) {
+    return false;
+  }
+
+  return player.currentHp <= (player.maxHp / 2);
 }
 
 function setAutoFightStatus(isRunning) {
@@ -231,6 +264,19 @@ function startAutoFight() {
     autoFightTickInProgress = true;
     try {
       await fight();
+
+      const playerStatusForAutoUse = {
+        currentHp: Number.parseInt(playerStatusCurrentHpElement.textContent ?? "", 10),
+        maxHp: Number.parseInt(playerStatusMaxHpElement.textContent ?? "", 10),
+        food: Number.parseInt(playerStatusFoodElement.textContent ?? "", 10)
+      };
+
+      if (autoFightTimerId !== null && shouldAutoUseFood(playerStatusForAutoUse)) {
+        const playerAfterFood = await useFood();
+        if (playerAfterFood) {
+          fightResultElement.textContent = `${fightResultElement.textContent} | Auto Use Food triggered.`;
+        }
+      }
     } catch (error) {
       stopAutoFight();
       fightResultElement.textContent = "Auto fight stopped due to request error.";
@@ -260,4 +306,6 @@ document.getElementById("fightButton").addEventListener("click", fight);
 document.getElementById("useFoodButton").addEventListener("click", useFood);
 startAutoFightButton.addEventListener("click", startAutoFight);
 stopAutoFightButton.addEventListener("click", stopAutoFight);
+autoUseFoodCheckbox.addEventListener("change", setAutoUseFoodStatus);
 setAutoFightStatus(false);
+setAutoUseFoodStatus();
