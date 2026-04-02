@@ -68,6 +68,16 @@ function showResult(data) {
   resultElement.textContent = JSON.stringify(data, null, 2);
 }
 
+function writeLastResultMessages(messages) {
+  const normalizedMessages = (messages ?? [])
+    .filter(message => typeof message === "string" && message.trim().length > 0)
+    .map(message => message.trim());
+
+  fightResultElement.textContent = normalizedMessages.length > 0
+    ? normalizedMessages.join(" | ")
+    : "No action yet.";
+}
+
 function showPlayerStatus(player) {
   if (!player) {
     playerStatusIdElement.textContent = "-";
@@ -123,7 +133,7 @@ async function loadPlayer() {
   if (!response.ok) {
     showPlayerStatus(null);
     showCurrentEnemy(null);
-    fightResultElement.textContent = "Load failed.";
+    writeLastResultMessages([`Load Player failed (${response.status}).`]);
     showResult({ error: `Load failed (${response.status})`, detail: text });
     return;
   }
@@ -131,6 +141,7 @@ async function loadPlayer() {
   const player = JSON.parse(text);
   showPlayerStatus(player);
   showCurrentEnemy(player);
+  writeLastResultMessages([`Load Player success: ${player.name} (ID ${player.id}).`]);
   showResult(player);
 }
 
@@ -147,7 +158,7 @@ async function createPlayer() {
   if (!response.ok) {
     showPlayerStatus(null);
     showCurrentEnemy(null);
-    fightResultElement.textContent = "Create failed.";
+    writeLastResultMessages([`Create Player failed (${response.status}).`]);
     showResult({ error: `Create failed (${response.status})`, detail: text });
     return;
   }
@@ -156,7 +167,7 @@ async function createPlayer() {
   playerIdInput.value = player.id;
   showPlayerStatus(player);
   showCurrentEnemy(player);
-  fightResultElement.textContent = "Player created.";
+  writeLastResultMessages([`Create Player success: ${player.name} (ID ${player.id}).`]);
   showResult(player);
 }
 
@@ -170,7 +181,7 @@ async function addGold() {
   if (!response.ok) {
     showPlayerStatus(null);
     showCurrentEnemy(null);
-    fightResultElement.textContent = "Add gold failed.";
+    writeLastResultMessages([`Add Gold failed (${response.status}).`]);
     showResult({ error: `Add gold failed (${response.status})`, detail: text });
     return;
   }
@@ -178,28 +189,11 @@ async function addGold() {
   const player = JSON.parse(text);
   showPlayerStatus(player);
   showCurrentEnemy(player);
-  fightResultElement.textContent = "Gold +10 applied.";
+  writeLastResultMessages([`Add Gold success: +10 Gold (Current: ${player.gold}).`]);
   showResult(player);
 }
 
-async function fight() {
-  const id = playerIdInput.value;
-  const response = await fetch(`/api/players/${encodeURIComponent(id)}/fight`, {
-    method: "POST"
-  });
-
-  const text = await response.text();
-  if (!response.ok) {
-    showPlayerStatus(null);
-    showCurrentEnemy(null);
-    fightResultElement.textContent = "Fight failed.";
-    showResult({ error: `Fight failed (${response.status})`, detail: text });
-    return null;
-  }
-
-  const fightResult = JSON.parse(text);
-  showPlayerStatus(fightResult.player);
-  showCurrentEnemy(fightResult.player);
+function buildFightMessage(fightResult) {
   const statusText = fightResult.enemyDefeated ? "Enemy Defeated" : (fightResult.playerDefeated ? "Player Defeated" : "Ongoing");
   const enemyText = `Enemy: ${fightResult.enemyName} (ATK ${fightResult.enemyAttack})`;
   const enemyHpText = `Enemy HP: ${fightResult.enemyCurrentHp}/${fightResult.enemyMaxHp}`;
@@ -209,16 +203,51 @@ async function fight() {
     : "Rewards: none";
   const levelText = fightResult.leveledUp ? ` | LEVEL UP! Lv${fightResult.player.level}` : "";
   const resultText = `Status: ${statusText} | ${enemyHpText} | ${roundDamageText} | ${rewardText}${levelText} | Player HP: ${fightResult.player.currentHp}/${fightResult.player.maxHp}`;
-  fightResultElement.textContent = `${enemyText} | ${resultText} | ${fightResult.summary}`;
-  if (fightResult.playerDefeated && autoFightTimerId !== null) {
-    stopAutoFight();
-    fightResultElement.textContent = `${fightResultElement.textContent} | Auto Fight stopped: player defeated.`;
-  }
-  showResult(fightResult);
-  return fightResult.player;
+  return `${enemyText} | ${resultText} | ${fightResult.summary}`;
 }
 
-async function useFood() {
+async function fight(options = {}) {
+  const { writeLastResult = true } = options;
+  const id = playerIdInput.value;
+  const response = await fetch(`/api/players/${encodeURIComponent(id)}/fight`, {
+    method: "POST"
+  });
+
+  const text = await response.text();
+  if (!response.ok) {
+    showPlayerStatus(null);
+    showCurrentEnemy(null);
+    const message = `Fight failed (${response.status}).`;
+    if (writeLastResult) {
+      writeLastResultMessages([message]);
+    }
+    showResult({ error: `Fight failed (${response.status})`, detail: text });
+    return null;
+  }
+
+  const fightResult = JSON.parse(text);
+  showPlayerStatus(fightResult.player);
+  showCurrentEnemy(fightResult.player);
+  const messages = [buildFightMessage(fightResult)];
+  if (fightResult.playerDefeated && autoFightTimerId !== null) {
+    stopAutoFight();
+    messages.push("Auto Fight stopped: player defeated.");
+  }
+
+  if (writeLastResult) {
+    writeLastResultMessages(messages);
+  }
+
+  showResult(fightResult);
+  return {
+    player: fightResult.player,
+    fightResult,
+    messages
+  };
+}
+
+async function useFood(options = {}) {
+  const { writeLastResult = true, source = "manual" } = options;
   const id = playerIdInput.value;
   const hpBeforeUseFood = Number.parseInt(playerStatusCurrentHpElement.textContent ?? "", 10);
   const response = await fetch(`/api/players/${encodeURIComponent(id)}/use-food`, {
@@ -237,7 +266,9 @@ async function useFood() {
       // keep fallback message
     }
 
-    fightResultElement.textContent = message;
+    if (writeLastResult) {
+      writeLastResultMessages([message]);
+    }
     showResult({ error: `Use food failed (${response.status})`, detail: text });
     return;
   }
@@ -248,13 +279,20 @@ async function useFood() {
   const recoveredHp = Number.isFinite(hpBeforeUseFood)
     ? Math.max(0, player.currentHp - hpBeforeUseFood)
     : null;
-  if (recoveredHp === null) {
-    fightResultElement.textContent = `${player.name} used 1 Food. Current HP: ${player.currentHp}/${player.maxHp}.`;
-  } else {
-    fightResultElement.textContent = `${player.name} used 1 Food and recovered ${recoveredHp} HP. Current HP: ${player.currentHp}/${player.maxHp}.`;
+  const foodActionPrefix = source === "auto" ? "Auto Use Food" : "Use Food";
+  const foodMessage = recoveredHp === null
+    ? `${foodActionPrefix}: ${player.name} used 1 Food. Current HP: ${player.currentHp}/${player.maxHp}.`
+    : `${foodActionPrefix}: ${player.name} used 1 Food and recovered ${recoveredHp} HP. Current HP: ${player.currentHp}/${player.maxHp}.`;
+
+  if (writeLastResult) {
+    writeLastResultMessages([foodMessage]);
   }
+
   showResult(player);
-  return player;
+  return {
+    player,
+    message: foodMessage
+  };
 }
 
 async function setPreferredEnemy() {
@@ -280,14 +318,16 @@ async function setPreferredEnemy() {
     }
 
     syncPreferredEnemyUi({ preferredEnemyKey: previousPreferredEnemyKey });
-    fightResultElement.textContent = message;
+    writeLastResultMessages([message]);
     showResult({ error: `Set preferred enemy failed (${response.status})`, detail: text });
     return;
   }
 
   const player = JSON.parse(text);
+  const preferredEnemyName = getPreferredEnemyDisplayName(player.preferredEnemyKey);
   showPlayerStatus(player);
   showCurrentEnemy(player);
+  writeLastResultMessages([`Preferred Enemy updated: ${preferredEnemyName}.`]);
   showResult(player);
 }
 
@@ -351,16 +391,26 @@ function startAutoFight() {
 
     autoFightTickInProgress = true;
     try {
-      const playerAfterFight = await fight();
+      const tickMessages = [];
+      const fightOutcome = await fight({ writeLastResult: false });
+      const playerAfterFight = fightOutcome?.player ?? null;
+      if (fightOutcome?.messages?.length) {
+        tickMessages.push(...fightOutcome.messages);
+      }
+
       if (autoFightTimerId !== null && shouldAutoUseFood(playerAfterFight)) {
-        const playerAfterFood = await useFood();
-        if (playerAfterFood) {
-          fightResultElement.textContent = `${fightResultElement.textContent} | Auto Use Food triggered.`;
+        const useFoodOutcome = await useFood({ writeLastResult: false, source: "auto" });
+        if (useFoodOutcome?.message) {
+          tickMessages.push(useFoodOutcome.message);
         }
+      }
+
+      if (tickMessages.length > 0) {
+        writeLastResultMessages(tickMessages);
       }
     } catch (error) {
       stopAutoFight();
-      fightResultElement.textContent = "Auto fight stopped due to request error.";
+      writeLastResultMessages(["Auto Fight stopped due to request error."]);
       showResult({ error: "Auto fight request failed.", detail: String(error) });
     } finally {
       autoFightTickInProgress = false;
