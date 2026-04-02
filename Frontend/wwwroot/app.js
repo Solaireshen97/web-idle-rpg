@@ -22,6 +22,7 @@ const stopAutoFightButton = document.getElementById("stopAutoFightButton");
 const autoUseFoodCheckbox = document.getElementById("autoUseFoodCheckbox");
 const autoUseFoodThresholdSelect = document.getElementById("autoUseFoodThresholdSelect");
 const autoUseFoodStatusElement = document.getElementById("autoUseFoodStatus");
+const defaultAutoUseFoodThresholdPercent = 50;
 const autoFightIntervalMs = 1000;
 let autoFightTimerId = null;
 let autoFightTickInProgress = false;
@@ -152,7 +153,7 @@ async function fight() {
     showCurrentEnemy(null);
     fightResultElement.textContent = "Fight failed.";
     showResult({ error: `Fight failed (${response.status})`, detail: text });
-    return;
+    return null;
   }
 
   const fightResult = JSON.parse(text);
@@ -173,6 +174,7 @@ async function fight() {
     fightResultElement.textContent = `${fightResultElement.textContent} | Auto Fight stopped: player defeated.`;
   }
   showResult(fightResult);
+  return fightResult.player;
 }
 
 async function useFood() {
@@ -215,10 +217,17 @@ async function useFood() {
 }
 
 function setAutoUseFoodStatus() {
-  const thresholdPercent = Number.parseInt(autoUseFoodThresholdSelect.value, 10);
-  const thresholdText = Number.isFinite(thresholdPercent) ? `${thresholdPercent}%` : "50%";
+  const thresholdPercent = getAutoUseFoodThresholdPercent();
+  const thresholdText = `${thresholdPercent}%`;
   const stateText = autoUseFoodCheckbox.checked ? "On" : "Off";
   autoUseFoodStatusElement.textContent = `Auto Use Food: ${stateText} | Threshold: ${thresholdText}`;
+}
+
+function getAutoUseFoodThresholdPercent() {
+  const thresholdPercent = Number.parseInt(autoUseFoodThresholdSelect.value, 10);
+  return Number.isFinite(thresholdPercent) && thresholdPercent > 0
+    ? thresholdPercent
+    : defaultAutoUseFoodThresholdPercent;
 }
 
 function shouldAutoUseFood(player) {
@@ -242,11 +251,7 @@ function shouldAutoUseFood(player) {
     return false;
   }
 
-  const thresholdPercent = Number.parseInt(autoUseFoodThresholdSelect.value, 10);
-  if (!Number.isFinite(thresholdPercent) || thresholdPercent <= 0) {
-    return false;
-  }
-
+  const thresholdPercent = getAutoUseFoodThresholdPercent();
   const hpThreshold = Math.floor(player.maxHp * thresholdPercent / 100);
   return player.currentHp <= hpThreshold;
 }
@@ -271,15 +276,8 @@ function startAutoFight() {
 
     autoFightTickInProgress = true;
     try {
-      await fight();
-
-      const playerStatusForAutoUse = {
-        currentHp: Number.parseInt(playerStatusCurrentHpElement.textContent ?? "", 10),
-        maxHp: Number.parseInt(playerStatusMaxHpElement.textContent ?? "", 10),
-        food: Number.parseInt(playerStatusFoodElement.textContent ?? "", 10)
-      };
-
-      if (autoFightTimerId !== null && shouldAutoUseFood(playerStatusForAutoUse)) {
+      const playerAfterFight = await fight();
+      if (autoFightTimerId !== null && shouldAutoUseFood(playerAfterFight)) {
         const playerAfterFood = await useFood();
         if (playerAfterFood) {
           fightResultElement.textContent = `${fightResultElement.textContent} | Auto Use Food triggered.`;
