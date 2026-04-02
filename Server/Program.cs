@@ -14,6 +14,7 @@ const int PowerStrikeBonusDamage = 1;
 const int PowerStrikeCooldownTurns = 2;
 const string PowerStrikeSkillName = "Power Strike";
 const string BasicAttackSkillName = "Basic Attack";
+const string EnemyAttackActionName = "Enemy Attack";
 const string PlayersTableName = "Players";
 const string PreferredEnemyRandomKey = "random";
 const string PreferredEnemyTrainingSlimeKey = "training-slime";
@@ -192,13 +193,6 @@ app.MapPost("/api/players/{id:int}/fight", async (GameDbContext dbContext, int i
         enemyCurrentHp = basicAttackResult.EnemyHpAfterAction;
     }
 
-    if (playerActions.Count == 0)
-    {
-        var fallbackBasicAttackResult = ExecutePlayerBasicAttackSkill(player, enemyCurrentHp);
-        playerActions.Add(ToPlayerActionResultDto(fallbackBasicAttackResult));
-        enemyCurrentHp = fallbackBasicAttackResult.EnemyHpAfterAction;
-    }
-
     player.PowerStrikeCooldownRemaining = shouldUsePowerStrike
         ? Math.Max(0, PowerStrikeCooldownTurns - 1)
         : Math.Max(0, powerStrikeCooldownAtTurnStart - 1);
@@ -207,11 +201,14 @@ app.MapPost("/api/players/{id:int}/fight", async (GameDbContext dbContext, int i
     var playerDamageDealt = playerActions.Sum(action => action.DamageDealt);
     var enemyDefeated = enemyCurrentHp <= 0;
 
+    string? enemyActionName = null;
     var enemyDamageDealt = 0;
     if (!enemyDefeated)
     {
-        enemyDamageDealt = Math.Min(enemy.Attack, playerCurrentHp);
-        playerCurrentHp -= enemy.Attack;
+        var enemyActionResult = ExecuteEnemyAttackAction(enemy, playerCurrentHp);
+        enemyActionName = enemyActionResult.ActionName;
+        enemyDamageDealt = enemyActionResult.DamageDealt;
+        playerCurrentHp = enemyActionResult.PlayerHpAfterAction;
     }
 
     var playerDefeated = playerCurrentHp <= 0;
@@ -281,6 +278,8 @@ app.MapPost("/api/players/{id:int}/fight", async (GameDbContext dbContext, int i
         enemy.Attack,
         lastPlayerAction.ActionName,
         playerActions,
+        enemyActionName,
+        enemyDamageDealt,
         Math.Max(0, enemyCurrentHp),
         playerDamageDealt,
         enemyDamageDealt,
@@ -521,6 +520,19 @@ static PlayerSkillExecutionResult ExecutePlayerPowerStrikeSkill(Player player, i
         enemyHpAfterAction);
 }
 
+static EnemyActionExecutionResult ExecuteEnemyAttackAction(CurrentEnemyState enemy, int playerCurrentHp)
+{
+    var normalizedPlayerCurrentHp = Math.Max(0, playerCurrentHp);
+    var normalizedEnemyAttack = Math.Max(1, enemy.Attack);
+    var damageDealt = Math.Min(normalizedEnemyAttack, normalizedPlayerCurrentHp);
+    var playerHpAfterAction = normalizedPlayerCurrentHp - damageDealt;
+
+    return new EnemyActionExecutionResult(
+        EnemyAttackActionName,
+        damageDealt,
+        playerHpAfterAction);
+}
+
 static PlayerActionResultDto ToPlayerActionResultDto(PlayerSkillExecutionResult skillResult) =>
     new(
         skillResult.SkillName,
@@ -546,3 +558,8 @@ file sealed record PlayerSkillExecutionResult(
     string SkillName,
     int DamageDealt,
     int EnemyHpAfterAction);
+
+file sealed record EnemyActionExecutionResult(
+    string ActionName,
+    int DamageDealt,
+    int PlayerHpAfterAction);

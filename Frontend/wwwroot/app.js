@@ -217,9 +217,10 @@ function buildFightMessage(fightResult) {
   const fallbackActionName = fightResult.playerSkillName ?? defaultBasicAttackSkillName;
   const actionOrderText = formatPlayerActionOrder(playerActions, fallbackActionName);
   const actionDamageText = formatPlayerActionDamage(playerActions, fallbackActionName, fightResult.playerDamageDealt);
+  const enemyActionText = formatEnemyAction(fightResult.enemyActionName, fightResult.enemyActionDamageDealt, fightResult.enemyDamageDealt);
   const enemyText = `Enemy: ${fightResult.enemyName} (ATK ${fightResult.enemyAttack})`;
   const enemyHpText = `Enemy HP: ${fightResult.enemyCurrentHp}/${fightResult.enemyMaxHp}`;
-  const roundDamageText = `Round Damage -> You: ${fightResult.playerDamageDealt}, Enemy: ${fightResult.enemyDamageDealt}`;
+  const roundDamageText = `Round Damage -> You: ${fightResult.playerDamageDealt}, Enemy: ${fightResult.enemyDamageDealt} | Enemy Turn: ${enemyActionText}`;
   const rewardText = fightResult.enemyDefeated
     ? `Rewards: Gold +${fightResult.goldReward}, EXP +${fightResult.experienceReward}`
     : "Rewards: none";
@@ -242,6 +243,15 @@ function formatPlayerActionDamage(playerActions, fallbackActionName, fallbackDam
   }
 
   return playerActions.map(action => `${action.actionName}:${action.damageDealt}`).join(", ");
+}
+
+function formatEnemyAction(enemyActionName, enemyActionDamageDealt, fallbackEnemyDamage) {
+  if (typeof enemyActionName !== "string" || enemyActionName.trim().length === 0) {
+    return "Skipped";
+  }
+
+  const damage = Number.isFinite(enemyActionDamageDealt) ? enemyActionDamageDealt : fallbackEnemyDamage;
+  return `${enemyActionName}:${damage}`;
 }
 
 async function fight(options = {}) {
