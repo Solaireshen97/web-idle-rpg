@@ -126,6 +126,27 @@ app.MapPost("/api/players/{id:int}/preferred-enemy", async (IHttpClientFactory h
         : Results.Ok(player);
 });
 
+app.MapPost("/api/players/{id:int}/power-strike", async (IHttpClientFactory httpClientFactory, int id, SetPowerStrikeRequest request) =>
+{
+    var serverApi = httpClientFactory.CreateClient("ServerApi");
+    var response = await serverApi.PostAsJsonAsync($"/api/players/{id}/power-strike", request);
+
+    if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+    {
+        return Results.NotFound();
+    }
+
+    if (!response.IsSuccessStatusCode)
+    {
+        return await ForwardResponseAsContentAsync(response);
+    }
+
+    var player = await response.Content.ReadFromJsonAsync<PlayerDto>();
+    return player is null
+        ? Results.StatusCode(StatusCodes.Status502BadGateway)
+        : Results.Ok(player);
+});
+
 app.MapPost("/api/players/{id:int}/fight", async (IHttpClientFactory httpClientFactory, int id) =>
 {
     var serverApi = httpClientFactory.CreateClient("ServerApi");

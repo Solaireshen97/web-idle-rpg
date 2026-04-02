@@ -23,15 +23,19 @@ const stopAutoFightButton = document.getElementById("stopAutoFightButton");
 const autoUseFoodCheckbox = document.getElementById("autoUseFoodCheckbox");
 const autoUseFoodThresholdSelect = document.getElementById("autoUseFoodThresholdSelect");
 const autoUseFoodStatusElement = document.getElementById("autoUseFoodStatus");
+const powerStrikeCheckbox = document.getElementById("powerStrikeCheckbox");
+const powerStrikeStatusElement = document.getElementById("powerStrikeStatus");
 const preferredEnemySelect = document.getElementById("preferredEnemySelect");
 const preferredEnemyStatusElement = document.getElementById("preferredEnemyStatus");
 const defaultAutoUseFoodThresholdPercent = 50;
 const defaultPreferredEnemyKey = "random";
 const defaultBasicAttackSkillName = "Basic Attack";
+const defaultPowerStrikeEnabled = true;
 const autoFightIntervalMs = 1000;
 let autoFightTimerId = null;
 let autoFightTickInProgress = false;
 let currentPreferredEnemyKey = defaultPreferredEnemyKey;
+let currentPowerStrikeEnabled = defaultPowerStrikeEnabled;
 
 const preferredEnemyDisplayNameByKey = {
   random: "Random",
@@ -65,6 +69,17 @@ function syncPreferredEnemyUi(player) {
   playerStatusPreferredEnemyElement.textContent = preferredEnemyName;
 }
 
+function getNormalizedPowerStrikeEnabled(value) {
+  return typeof value === "boolean" ? value : defaultPowerStrikeEnabled;
+}
+
+function syncPowerStrikeUi(player) {
+  const powerStrikeEnabled = getNormalizedPowerStrikeEnabled(player?.powerStrikeEnabled);
+  currentPowerStrikeEnabled = powerStrikeEnabled;
+  powerStrikeCheckbox.checked = powerStrikeEnabled;
+  powerStrikeStatusElement.textContent = `Power Strike: ${powerStrikeEnabled ? "On" : "Off"}`;
+}
+
 function showResult(data) {
   resultElement.textContent = JSON.stringify(data, null, 2);
 }
@@ -94,6 +109,7 @@ function showPlayerStatus(player) {
     playerStatusCreatedAtElement.textContent = "-";
     playerStatusUpdatedAtElement.textContent = "-";
     syncPreferredEnemyUi(null);
+    syncPowerStrikeUi(null);
     return;
   }
 
@@ -110,6 +126,7 @@ function showPlayerStatus(player) {
   playerStatusCreatedAtElement.textContent = player.createdAt;
   playerStatusUpdatedAtElement.textContent = player.updatedAt;
   syncPreferredEnemyUi(player);
+  syncPowerStrikeUi(player);
 }
 
 function showCurrentEnemy(player) {
@@ -352,6 +369,31 @@ async function setPreferredEnemy() {
   showResult(player);
 }
 
+async function setPowerStrikeEnabled() {
+  const id = playerIdInput.value;
+  const previousEnabled = currentPowerStrikeEnabled;
+  const enabled = !!powerStrikeCheckbox.checked;
+  const response = await fetch(`/api/players/${encodeURIComponent(id)}/power-strike`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ enabled })
+  });
+
+  const text = await response.text();
+  if (!response.ok) {
+    syncPowerStrikeUi({ powerStrikeEnabled: previousEnabled });
+    writeLastResultMessages([`Set Power Strike failed (${response.status}).`]);
+    showResult({ error: `Set Power Strike failed (${response.status})`, detail: text });
+    return;
+  }
+
+  const player = JSON.parse(text);
+  showPlayerStatus(player);
+  showCurrentEnemy(player);
+  writeLastResultMessages([`Power Strike ${player.powerStrikeEnabled ? "enabled" : "disabled"}.`]);
+  showResult(player);
+}
+
 function setAutoUseFoodStatus() {
   const thresholdPercent = getAutoUseFoodThresholdPercent();
   const thresholdText = `${thresholdPercent}%`;
@@ -461,6 +503,8 @@ stopAutoFightButton.addEventListener("click", stopAutoFight);
 autoUseFoodCheckbox.addEventListener("change", setAutoUseFoodStatus);
 autoUseFoodThresholdSelect.addEventListener("change", setAutoUseFoodStatus);
 preferredEnemySelect.addEventListener("change", setPreferredEnemy);
+powerStrikeCheckbox.addEventListener("change", setPowerStrikeEnabled);
 setAutoFightStatus(false);
 setAutoUseFoodStatus();
 syncPreferredEnemyUi(null);
+syncPowerStrikeUi(null);

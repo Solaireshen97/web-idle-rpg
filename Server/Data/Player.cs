@@ -7,6 +7,7 @@ public class Player
     private const int DefaultMaxHp = 30;
     private const int DefaultFood = 3;
     private const string DefaultPreferredEnemyKey = "random";
+    private const bool DefaultPowerStrikeEnabled = true;
 
     public Player()
     {
@@ -19,6 +20,7 @@ public class Player
         CurrentHp = DefaultMaxHp;
         Food = DefaultFood;
         PreferredEnemyKey = DefaultPreferredEnemyKey;
+        PowerStrikeEnabled = DefaultPowerStrikeEnabled;
     }
 
     public int Id { get; set; }
@@ -37,6 +39,7 @@ public class Player
     public int? CurrentEnemyGoldReward { get; set; }
     public int? CurrentEnemyExperienceReward { get; set; }
     public string PreferredEnemyKey { get; set; }
+    public bool PowerStrikeEnabled { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
 }

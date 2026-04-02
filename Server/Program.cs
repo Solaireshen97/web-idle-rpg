@@ -138,6 +138,21 @@ app.MapPost("/api/players/{id:int}/preferred-enemy", async (GameDbContext dbCont
     return Results.Ok(ToPlayerDto(player));
 });
 
+app.MapPost("/api/players/{id:int}/power-strike", async (GameDbContext dbContext, int id, SetPowerStrikeRequest request) =>
+{
+    var player = await dbContext.Players.FindAsync(id);
+    if (player is null)
+    {
+        return Results.NotFound();
+    }
+
+    player.PowerStrikeEnabled = request.Enabled;
+    player.UpdatedAt = DateTime.UtcNow;
+
+    await dbContext.SaveChangesAsync();
+    return Results.Ok(ToPlayerDto(player));
+});
+
 app.MapPost("/api/players/{id:int}/fight", async (GameDbContext dbContext, int id) =>
 {
     var player = await dbContext.Players.FindAsync(id);
@@ -160,9 +175,12 @@ app.MapPost("/api/players/{id:int}/fight", async (GameDbContext dbContext, int i
     var enemyCurrentHp = Math.Max(0, enemy.CurrentHp);
     var playerActions = new List<PlayerActionResultDto>();
 
-    var powerStrikeResult = ExecutePlayerPowerStrikeSkill(player, enemyCurrentHp);
-    playerActions.Add(ToPlayerActionResultDto(powerStrikeResult));
-    enemyCurrentHp = powerStrikeResult.EnemyHpAfterAction;
+    if (player.PowerStrikeEnabled)
+    {
+        var powerStrikeResult = ExecutePlayerPowerStrikeSkill(player, enemyCurrentHp);
+        playerActions.Add(ToPlayerActionResultDto(powerStrikeResult));
+        enemyCurrentHp = powerStrikeResult.EnemyHpAfterAction;
+    }
 
     if (enemyCurrentHp > 0)
     {
@@ -278,6 +296,7 @@ static PlayerDto ToPlayerDto(Player player) =>
         player.CurrentEnemyGoldReward,
         player.CurrentEnemyExperienceReward,
         NormalizePreferredEnemyKey(player.PreferredEnemyKey),
+        player.PowerStrikeEnabled,
         player.CreatedAt,
         player.UpdatedAt);
 
@@ -341,6 +360,7 @@ static void EnsurePlayerSchema(GameDbContext dbContext)
     AddPlayerColumnIfMissing(dbContext, existingColumns, "CurrentEnemyGoldReward");
     AddPlayerColumnIfMissing(dbContext, existingColumns, "CurrentEnemyExperienceReward");
     AddPlayerColumnIfMissing(dbContext, existingColumns, "PreferredEnemyKey");
+    AddPlayerColumnIfMissing(dbContext, existingColumns, "PowerStrikeEnabled");
 }
 
 static HashSet<string> GetPlayerColumnNames(GameDbContext dbContext)
@@ -404,6 +424,7 @@ static void AddPlayerColumnIfMissing(GameDbContext dbContext, HashSet<string> ex
             "CurrentEnemyGoldReward" => @"ALTER TABLE ""Players"" ADD COLUMN ""CurrentEnemyGoldReward"" INTEGER NULL",
             "CurrentEnemyExperienceReward" => @"ALTER TABLE ""Players"" ADD COLUMN ""CurrentEnemyExperienceReward"" INTEGER NULL",
             "PreferredEnemyKey" => @"ALTER TABLE ""Players"" ADD COLUMN ""PreferredEnemyKey"" TEXT NOT NULL DEFAULT 'random'",
+            "PowerStrikeEnabled" => @"ALTER TABLE ""Players"" ADD COLUMN ""PowerStrikeEnabled"" INTEGER NOT NULL DEFAULT 1",
             _ => throw new InvalidOperationException($"Unsupported Players column '{columnName}'.")
         };
         command.ExecuteNonQuery();
