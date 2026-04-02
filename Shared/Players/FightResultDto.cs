@@ -9,6 +9,7 @@ public sealed record FightResultDto(
     int EnemyMaxHp,
     int EnemyAttack,
     string PlayerSkillName,
+    IReadOnlyList<PlayerActionResultDto> PlayerActions,
     int EnemyCurrentHp,
     int PlayerDamageDealt,
     int EnemyDamageDealt,
@@ -16,3 +17,8 @@ public sealed record FightResultDto(
     bool PlayerDefeated,
     string Summary,
     PlayerDto Player);
+
+public sealed record PlayerActionResultDto(
+    string ActionName,
+    int DamageDealt,
+    int EnemyHpAfterAction);
