@@ -16,5 +16,6 @@ public sealed record PlayerDto(
     int? CurrentEnemyAttack,
     int? CurrentEnemyGoldReward,
     int? CurrentEnemyExperienceReward,
+    string PreferredEnemyKey,
     DateTime CreatedAt,
     DateTime UpdatedAt);

@@ -11,13 +11,27 @@ const int LevelUpAttackBonus = 1;
 const int LevelUpMaxHpBonus = 5;
 const int DefeatSurvivalHp = 1;
 const string PlayersTableName = "Players";
+const string PreferredEnemyRandomKey = "random";
+const string PreferredEnemyTrainingSlimeKey = "training-slime";
+const string PreferredEnemyWolfKey = "wolf";
+const string PreferredEnemyGoblinKey = "goblin";
 
-var enemyTemplates = new[]
+var supportedPreferredEnemyKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
 {
-    new EnemyTemplate("Training Slime", 24, 2, 5, 5),
-    new EnemyTemplate("Wolf", 36, 3, 9, 8),
-    new EnemyTemplate("Goblin", 52, 4, 12, 11),
+    PreferredEnemyRandomKey,
+    PreferredEnemyTrainingSlimeKey,
+    PreferredEnemyWolfKey,
+    PreferredEnemyGoblinKey
 };
+
+var enemyTemplateByKey = new Dictionary<string, EnemyTemplate>(StringComparer.OrdinalIgnoreCase)
+{
+    [PreferredEnemyTrainingSlimeKey] = new EnemyTemplate("Training Slime", 24, 2, 5, 5),
+    [PreferredEnemyWolfKey] = new EnemyTemplate("Wolf", 36, 3, 9, 8),
+    [PreferredEnemyGoblinKey] = new EnemyTemplate("Goblin", 52, 4, 12, 11),
+};
+
+var enemyTemplates = enemyTemplateByKey.Values.ToArray();
 
 var builder = WebApplication.CreateBuilder(args);
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection")
@@ -101,6 +115,26 @@ app.MapPost("/api/players/{id:int}/use-food", async (GameDbContext dbContext, in
     return Results.Ok(ToPlayerDto(player));
 });
 
+app.MapPost("/api/players/{id:int}/preferred-enemy", async (GameDbContext dbContext, int id, SetPreferredEnemyRequest request) =>
+{
+    var player = await dbContext.Players.FindAsync(id);
+    if (player is null)
+    {
+        return Results.NotFound();
+    }
+
+    if (!TryGetPreferredEnemyKey(request.EnemyKey, out var enemyKey))
+    {
+        return Results.BadRequest(new { message = "Invalid enemyKey. Supported: random, training-slime, wolf, goblin." });
+    }
+
+    player.PreferredEnemyKey = enemyKey;
+    player.UpdatedAt = DateTime.UtcNow;
+
+    await dbContext.SaveChangesAsync();
+    return Results.Ok(ToPlayerDto(player));
+});
+
 app.MapPost("/api/players/{id:int}/fight", async (GameDbContext dbContext, int id) =>
 {
     var player = await dbContext.Players.FindAsync(id);
@@ -111,7 +145,9 @@ app.MapPost("/api/players/{id:int}/fight", async (GameDbContext dbContext, int i
 
     if (!HasCurrentEnemy(player))
     {
-        AssignCurrentEnemy(player, enemyTemplates[Random.Shared.Next(enemyTemplates.Length)]);
+        var preferredEnemyKey = NormalizePreferredEnemyKey(player.PreferredEnemyKey);
+        var enemyTemplate = GetEnemyTemplateForNewFight(preferredEnemyKey, enemyTemplateByKey, enemyTemplates);
+        AssignCurrentEnemy(player, enemyTemplate);
     }
 
     var enemy = GetCurrentEnemyState(player);
@@ -225,6 +261,7 @@ static PlayerDto ToPlayerDto(Player player) =>
         player.CurrentEnemyAttack,
         player.CurrentEnemyGoldReward,
         player.CurrentEnemyExperienceReward,
+        NormalizePreferredEnemyKey(player.PreferredEnemyKey),
         player.CreatedAt,
         player.UpdatedAt);
 
@@ -287,6 +324,7 @@ static void EnsurePlayerSchema(GameDbContext dbContext)
     AddPlayerColumnIfMissing(dbContext, existingColumns, "CurrentEnemyAttack");
     AddPlayerColumnIfMissing(dbContext, existingColumns, "CurrentEnemyGoldReward");
     AddPlayerColumnIfMissing(dbContext, existingColumns, "CurrentEnemyExperienceReward");
+    AddPlayerColumnIfMissing(dbContext, existingColumns, "PreferredEnemyKey");
 }
 
 static HashSet<string> GetPlayerColumnNames(GameDbContext dbContext)
@@ -349,6 +387,7 @@ static void AddPlayerColumnIfMissing(GameDbContext dbContext, HashSet<string> ex
             "CurrentEnemyAttack" => @"ALTER TABLE ""Players"" ADD COLUMN ""CurrentEnemyAttack"" INTEGER NULL",
             "CurrentEnemyGoldReward" => @"ALTER TABLE ""Players"" ADD COLUMN ""CurrentEnemyGoldReward"" INTEGER NULL",
             "CurrentEnemyExperienceReward" => @"ALTER TABLE ""Players"" ADD COLUMN ""CurrentEnemyExperienceReward"" INTEGER NULL",
+            "PreferredEnemyKey" => @"ALTER TABLE ""Players"" ADD COLUMN ""PreferredEnemyKey"" TEXT NOT NULL DEFAULT 'random'",
             _ => throw new InvalidOperationException($"Unsupported Players column '{columnName}'.")
         };
         command.ExecuteNonQuery();
@@ -361,6 +400,44 @@ static void AddPlayerColumnIfMissing(GameDbContext dbContext, HashSet<string> ex
             connection.Close();
         }
     }
+}
+
+static string NormalizePreferredEnemyKey(string? preferredEnemyKey)
+{
+    return TryGetPreferredEnemyKey(preferredEnemyKey, out var normalizedKey)
+        ? normalizedKey
+        : PreferredEnemyRandomKey;
+}
+
+static bool TryGetPreferredEnemyKey(string? preferredEnemyKey, out string normalizedKey)
+{
+    normalizedKey = preferredEnemyKey?.Trim().ToLowerInvariant() ?? string.Empty;
+    switch (normalizedKey)
+    {
+        case PreferredEnemyRandomKey:
+        case PreferredEnemyTrainingSlimeKey:
+        case PreferredEnemyWolfKey:
+        case PreferredEnemyGoblinKey:
+            return true;
+        default:
+            normalizedKey = PreferredEnemyRandomKey;
+            return false;
+    }
+}
+
+static EnemyTemplate GetEnemyTemplateForNewFight(
+    string preferredEnemyKey,
+    Dictionary<string, EnemyTemplate> enemyTemplateByKey,
+    EnemyTemplate[] enemyTemplates)
+{
+    if (preferredEnemyKey == PreferredEnemyRandomKey)
+    {
+        return enemyTemplates[Random.Shared.Next(enemyTemplates.Length)];
+    }
+
+    return enemyTemplateByKey.TryGetValue(preferredEnemyKey, out var enemyTemplate)
+        ? enemyTemplate
+        : enemyTemplates[Random.Shared.Next(enemyTemplates.Length)];
 }
 
 file sealed record EnemyTemplate(

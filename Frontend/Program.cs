@@ -105,6 +105,27 @@ app.MapPost("/api/players/{id:int}/use-food", async (IHttpClientFactory httpClie
         : Results.Ok(player);
 });
 
+app.MapPost("/api/players/{id:int}/preferred-enemy", async (IHttpClientFactory httpClientFactory, int id, SetPreferredEnemyRequest request) =>
+{
+    var serverApi = httpClientFactory.CreateClient("ServerApi");
+    var response = await serverApi.PostAsJsonAsync($"/api/players/{id}/preferred-enemy", request);
+
+    if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+    {
+        return Results.NotFound();
+    }
+
+    if (!response.IsSuccessStatusCode)
+    {
+        return await ForwardResponseAsContentAsync(response);
+    }
+
+    var player = await response.Content.ReadFromJsonAsync<PlayerDto>();
+    return player is null
+        ? Results.StatusCode(StatusCodes.Status502BadGateway)
+        : Results.Ok(player);
+});
+
 app.MapPost("/api/players/{id:int}/fight", async (IHttpClientFactory httpClientFactory, int id) =>
 {
     var serverApi = httpClientFactory.CreateClient("ServerApi");

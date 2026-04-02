@@ -10,6 +10,7 @@ const playerStatusExperienceElement = document.getElementById("playerStatusExper
 const playerStatusAttackElement = document.getElementById("playerStatusAttack");
 const playerStatusMaxHpElement = document.getElementById("playerStatusMaxHp");
 const playerStatusCurrentHpElement = document.getElementById("playerStatusCurrentHp");
+const playerStatusPreferredEnemyElement = document.getElementById("playerStatusPreferredEnemy");
 const playerStatusCreatedAtElement = document.getElementById("playerStatusCreatedAt");
 const playerStatusUpdatedAtElement = document.getElementById("playerStatusUpdatedAt");
 const currentEnemyNameElement = document.getElementById("currentEnemyName");
@@ -22,10 +23,46 @@ const stopAutoFightButton = document.getElementById("stopAutoFightButton");
 const autoUseFoodCheckbox = document.getElementById("autoUseFoodCheckbox");
 const autoUseFoodThresholdSelect = document.getElementById("autoUseFoodThresholdSelect");
 const autoUseFoodStatusElement = document.getElementById("autoUseFoodStatus");
+const preferredEnemySelect = document.getElementById("preferredEnemySelect");
+const preferredEnemyStatusElement = document.getElementById("preferredEnemyStatus");
 const defaultAutoUseFoodThresholdPercent = 50;
+const defaultPreferredEnemyKey = "random";
 const autoFightIntervalMs = 1000;
 let autoFightTimerId = null;
 let autoFightTickInProgress = false;
+let currentPreferredEnemyKey = defaultPreferredEnemyKey;
+
+const preferredEnemyDisplayNameByKey = {
+  random: "Random",
+  "training-slime": "Training Slime",
+  wolf: "Wolf",
+  goblin: "Goblin"
+};
+
+function getNormalizedPreferredEnemyKey(preferredEnemyKey) {
+  if (typeof preferredEnemyKey !== "string") {
+    return defaultPreferredEnemyKey;
+  }
+
+  const normalized = preferredEnemyKey.trim().toLowerCase();
+  return Object.prototype.hasOwnProperty.call(preferredEnemyDisplayNameByKey, normalized)
+    ? normalized
+    : defaultPreferredEnemyKey;
+}
+
+function getPreferredEnemyDisplayName(preferredEnemyKey) {
+  const normalizedKey = getNormalizedPreferredEnemyKey(preferredEnemyKey);
+  return preferredEnemyDisplayNameByKey[normalizedKey];
+}
+
+function syncPreferredEnemyUi(player) {
+  const preferredEnemyKey = getNormalizedPreferredEnemyKey(player?.preferredEnemyKey);
+  currentPreferredEnemyKey = preferredEnemyKey;
+  preferredEnemySelect.value = preferredEnemyKey;
+  const preferredEnemyName = getPreferredEnemyDisplayName(preferredEnemyKey);
+  preferredEnemyStatusElement.textContent = `Preferred Enemy: ${preferredEnemyName}`;
+  playerStatusPreferredEnemyElement.textContent = preferredEnemyName;
+}
 
 function showResult(data) {
   resultElement.textContent = JSON.stringify(data, null, 2);
@@ -42,8 +79,10 @@ function showPlayerStatus(player) {
     playerStatusAttackElement.textContent = "-";
     playerStatusMaxHpElement.textContent = "-";
     playerStatusCurrentHpElement.textContent = "-";
+    playerStatusPreferredEnemyElement.textContent = "-";
     playerStatusCreatedAtElement.textContent = "-";
     playerStatusUpdatedAtElement.textContent = "-";
+    syncPreferredEnemyUi(null);
     return;
   }
 
@@ -56,8 +95,10 @@ function showPlayerStatus(player) {
   playerStatusAttackElement.textContent = player.attack;
   playerStatusMaxHpElement.textContent = player.maxHp;
   playerStatusCurrentHpElement.textContent = player.currentHp;
+  playerStatusPreferredEnemyElement.textContent = getPreferredEnemyDisplayName(player.preferredEnemyKey);
   playerStatusCreatedAtElement.textContent = player.createdAt;
   playerStatusUpdatedAtElement.textContent = player.updatedAt;
+  syncPreferredEnemyUi(player);
 }
 
 function showCurrentEnemy(player) {
@@ -216,6 +257,40 @@ async function useFood() {
   return player;
 }
 
+async function setPreferredEnemy() {
+  const id = playerIdInput.value;
+  const previousPreferredEnemyKey = currentPreferredEnemyKey;
+  const enemyKey = getNormalizedPreferredEnemyKey(preferredEnemySelect.value);
+  const response = await fetch(`/api/players/${encodeURIComponent(id)}/preferred-enemy`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ enemyKey })
+  });
+
+  const text = await response.text();
+  if (!response.ok) {
+    let message = "Set preferred enemy failed.";
+    try {
+      const errorPayload = JSON.parse(text);
+      if (errorPayload?.message) {
+        message = errorPayload.message;
+      }
+    } catch {
+      // keep fallback message
+    }
+
+    syncPreferredEnemyUi({ preferredEnemyKey: previousPreferredEnemyKey });
+    fightResultElement.textContent = message;
+    showResult({ error: `Set preferred enemy failed (${response.status})`, detail: text });
+    return;
+  }
+
+  const player = JSON.parse(text);
+  showPlayerStatus(player);
+  showCurrentEnemy(player);
+  showResult(player);
+}
+
 function setAutoUseFoodStatus() {
   const thresholdPercent = getAutoUseFoodThresholdPercent();
   const thresholdText = `${thresholdPercent}%`;
@@ -314,5 +389,7 @@ startAutoFightButton.addEventListener("click", startAutoFight);
 stopAutoFightButton.addEventListener("click", stopAutoFight);
 autoUseFoodCheckbox.addEventListener("change", setAutoUseFoodStatus);
 autoUseFoodThresholdSelect.addEventListener("change", setAutoUseFoodStatus);
+preferredEnemySelect.addEventListener("change", setPreferredEnemy);
 setAutoFightStatus(false);
 setAutoUseFoodStatus();
+syncPreferredEnemyUi(null);

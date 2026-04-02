@@ -34,9 +34,24 @@
       <span class="label">Attack</span><span id="playerStatusAttack">-</span>
       <span class="label">HP</span><span id="playerStatusCurrentHp">-</span>
       <span class="label">Max HP</span><span id="playerStatusMaxHp">-</span>
+      <span class="label">Preferred Enemy</span><span id="playerStatusPreferredEnemy">-</span>
       <span class="label">Created</span><span id="playerStatusCreatedAt">-</span>
       <span class="label">Updated</span><span id="playerStatusUpdatedAt">-</span>
     </div>
+  </section>
+
+  <section>
+    <h2>Preferred Enemy</h2>
+    <label>
+      Next New Fight Enemy
+      <select id="preferredEnemySelect">
+        <option value="random">Random</option>
+        <option value="training-slime">Training Slime</option>
+        <option value="wolf">Wolf</option>
+        <option value="goblin">Goblin</option>
+      </select>
+    </label>
+    <div id="preferredEnemyStatus">Preferred Enemy: Random</div>
   </section>
 
   <section>
