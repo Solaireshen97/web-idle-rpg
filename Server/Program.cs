@@ -10,6 +10,7 @@ const int ExpPerLevelGrowth = 5;
 const int LevelUpAttackBonus = 1;
 const int LevelUpMaxHpBonus = 5;
 const int DefeatSurvivalHp = 1;
+const string BasicAttackSkillName = "Basic Attack";
 const string PlayersTableName = "Players";
 const string PreferredEnemyRandomKey = "random";
 const string PreferredEnemyTrainingSlimeKey = "training-slime";
@@ -152,13 +153,13 @@ app.MapPost("/api/players/{id:int}/fight", async (GameDbContext dbContext, int i
 
     var enemy = GetCurrentEnemyState(player);
 
-    var playerAttack = Math.Max(1, player.Attack);
     var playerMaxHp = Math.Max(1, player.MaxHp);
     var playerCurrentHp = Math.Min(playerMaxHp, Math.Max(0, player.CurrentHp));
     var enemyCurrentHp = Math.Max(0, enemy.CurrentHp);
 
-    var playerDamageDealt = Math.Min(playerAttack, enemyCurrentHp);
-    enemyCurrentHp -= playerAttack;
+    var playerSkillResult = ExecutePlayerBasicAttackSkill(player, enemyCurrentHp);
+    var playerDamageDealt = playerSkillResult.DamageDealt;
+    enemyCurrentHp = playerSkillResult.EnemyHpAfterAction;
     var enemyDefeated = enemyCurrentHp <= 0;
 
     var enemyDamageDealt = 0;
@@ -233,6 +234,7 @@ app.MapPost("/api/players/{id:int}/fight", async (GameDbContext dbContext, int i
         enemy.Name,
         enemy.MaxHp,
         enemy.Attack,
+        playerSkillResult.SkillName,
         Math.Max(0, enemyCurrentHp),
         playerDamageDealt,
         enemyDamageDealt,
@@ -440,6 +442,19 @@ static EnemyTemplate GetEnemyTemplateForNewFight(
         : enemyTemplates[Random.Shared.Next(enemyTemplates.Length)];
 }
 
+static PlayerSkillExecutionResult ExecutePlayerBasicAttackSkill(Player player, int enemyCurrentHp)
+{
+    var normalizedEnemyCurrentHp = Math.Max(0, enemyCurrentHp);
+    var normalizedPlayerAttack = Math.Max(1, player.Attack);
+    var damageDealt = Math.Min(normalizedPlayerAttack, normalizedEnemyCurrentHp);
+    var enemyHpAfterAction = normalizedEnemyCurrentHp - damageDealt;
+
+    return new PlayerSkillExecutionResult(
+        BasicAttackSkillName,
+        damageDealt,
+        enemyHpAfterAction);
+}
+
 file sealed record EnemyTemplate(
     string Name,
     int MaxHp,
@@ -454,3 +469,8 @@ file sealed record CurrentEnemyState(
     int Attack,
     int GoldReward,
     int ExperienceReward);
+
+file sealed record PlayerSkillExecutionResult(
+    string SkillName,
+    int DamageDealt,
+    int EnemyHpAfterAction);

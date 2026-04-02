@@ -8,6 +8,7 @@ public sealed record FightResultDto(
     string EnemyName,
     int EnemyMaxHp,
     int EnemyAttack,
+    string PlayerSkillName,
     int EnemyCurrentHp,
     int PlayerDamageDealt,
     int EnemyDamageDealt,
