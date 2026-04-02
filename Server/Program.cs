@@ -11,6 +11,7 @@ const int LevelUpAttackBonus = 1;
 const int LevelUpMaxHpBonus = 5;
 const int DefeatSurvivalHp = 1;
 const int PowerStrikeBonusDamage = 1;
+const int PowerStrikeCooldownTurns = 2;
 const string PowerStrikeSkillName = "Power Strike";
 const string BasicAttackSkillName = "Basic Attack";
 const string PlayersTableName = "Players";
@@ -174,8 +175,10 @@ app.MapPost("/api/players/{id:int}/fight", async (GameDbContext dbContext, int i
     var playerCurrentHp = Math.Min(playerMaxHp, Math.Max(0, player.CurrentHp));
     var enemyCurrentHp = Math.Max(0, enemy.CurrentHp);
     var playerActions = new List<PlayerActionResultDto>();
+    var powerStrikeCooldownAtTurnStart = Math.Max(0, player.PowerStrikeCooldownRemaining);
+    var shouldUsePowerStrike = player.PowerStrikeEnabled && powerStrikeCooldownAtTurnStart <= 0;
 
-    if (player.PowerStrikeEnabled)
+    if (shouldUsePowerStrike)
     {
         var powerStrikeResult = ExecutePlayerPowerStrikeSkill(player, enemyCurrentHp);
         playerActions.Add(ToPlayerActionResultDto(powerStrikeResult));
@@ -188,6 +191,17 @@ app.MapPost("/api/players/{id:int}/fight", async (GameDbContext dbContext, int i
         playerActions.Add(ToPlayerActionResultDto(basicAttackResult));
         enemyCurrentHp = basicAttackResult.EnemyHpAfterAction;
     }
+
+    if (playerActions.Count == 0)
+    {
+        var fallbackBasicAttackResult = ExecutePlayerBasicAttackSkill(player, enemyCurrentHp);
+        playerActions.Add(ToPlayerActionResultDto(fallbackBasicAttackResult));
+        enemyCurrentHp = fallbackBasicAttackResult.EnemyHpAfterAction;
+    }
+
+    player.PowerStrikeCooldownRemaining = shouldUsePowerStrike
+        ? Math.Max(0, PowerStrikeCooldownTurns - 1)
+        : Math.Max(0, powerStrikeCooldownAtTurnStart - 1);
 
     var lastPlayerAction = playerActions[^1];
     var playerDamageDealt = playerActions.Sum(action => action.DamageDealt);
@@ -297,6 +311,7 @@ static PlayerDto ToPlayerDto(Player player) =>
         player.CurrentEnemyExperienceReward,
         NormalizePreferredEnemyKey(player.PreferredEnemyKey),
         player.PowerStrikeEnabled,
+        Math.Max(0, player.PowerStrikeCooldownRemaining),
         player.CreatedAt,
         player.UpdatedAt);
 
@@ -361,6 +376,7 @@ static void EnsurePlayerSchema(GameDbContext dbContext)
     AddPlayerColumnIfMissing(dbContext, existingColumns, "CurrentEnemyExperienceReward");
     AddPlayerColumnIfMissing(dbContext, existingColumns, "PreferredEnemyKey");
     AddPlayerColumnIfMissing(dbContext, existingColumns, "PowerStrikeEnabled");
+    AddPlayerColumnIfMissing(dbContext, existingColumns, "PowerStrikeCooldownRemaining");
 }
 
 static HashSet<string> GetPlayerColumnNames(GameDbContext dbContext)
@@ -425,6 +441,7 @@ static void AddPlayerColumnIfMissing(GameDbContext dbContext, HashSet<string> ex
             "CurrentEnemyExperienceReward" => @"ALTER TABLE ""Players"" ADD COLUMN ""CurrentEnemyExperienceReward"" INTEGER NULL",
             "PreferredEnemyKey" => @"ALTER TABLE ""Players"" ADD COLUMN ""PreferredEnemyKey"" TEXT NOT NULL DEFAULT 'random'",
             "PowerStrikeEnabled" => @"ALTER TABLE ""Players"" ADD COLUMN ""PowerStrikeEnabled"" INTEGER NOT NULL DEFAULT 1",
+            "PowerStrikeCooldownRemaining" => @"ALTER TABLE ""Players"" ADD COLUMN ""PowerStrikeCooldownRemaining"" INTEGER NOT NULL DEFAULT 0",
             _ => throw new InvalidOperationException($"Unsupported Players column '{columnName}'.")
         };
         command.ExecuteNonQuery();

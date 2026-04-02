@@ -18,5 +18,6 @@ public sealed record PlayerDto(
     int? CurrentEnemyExperienceReward,
     string PreferredEnemyKey,
     bool PowerStrikeEnabled,
+    int PowerStrikeCooldownRemaining,
     DateTime CreatedAt,
     DateTime UpdatedAt);
