@@ -197,12 +197,9 @@ async function addGold() {
 function buildFightMessage(fightResult) {
   const statusText = fightResult.enemyDefeated ? "Enemy Defeated" : (fightResult.playerDefeated ? "Player Defeated" : "Ongoing");
   const playerActions = Array.isArray(fightResult.playerActions) ? fightResult.playerActions : [];
-  const actionOrderText = playerActions.length > 0
-    ? playerActions.map(action => action.actionName).join(" -> ")
-    : (fightResult.playerSkillName ?? defaultBasicAttackSkillName);
-  const actionDamageText = playerActions.length > 0
-    ? playerActions.map(action => `${action.actionName}:${action.damageDealt}`).join(", ")
-    : `${fightResult.playerSkillName ?? defaultBasicAttackSkillName}:${fightResult.playerDamageDealt}`;
+  const fallbackActionName = fightResult.playerSkillName ?? defaultBasicAttackSkillName;
+  const actionOrderText = formatPlayerActionOrder(playerActions, fallbackActionName);
+  const actionDamageText = formatPlayerActionDamage(playerActions, fallbackActionName, fightResult.playerDamageDealt);
   const enemyText = `Enemy: ${fightResult.enemyName} (ATK ${fightResult.enemyAttack})`;
   const enemyHpText = `Enemy HP: ${fightResult.enemyCurrentHp}/${fightResult.enemyMaxHp}`;
   const roundDamageText = `Round Damage -> You: ${fightResult.playerDamageDealt}, Enemy: ${fightResult.enemyDamageDealt}`;
@@ -212,6 +209,22 @@ function buildFightMessage(fightResult) {
   const levelText = fightResult.leveledUp ? ` | LEVEL UP! Lv${fightResult.player.level}` : "";
   const resultText = `Status: ${statusText} | Player Turn: ${actionOrderText} | Action Damage: ${actionDamageText} | ${enemyHpText} | ${roundDamageText} | ${rewardText}${levelText} | Player HP: ${fightResult.player.currentHp}/${fightResult.player.maxHp}`;
   return `${enemyText} | ${resultText} | ${fightResult.summary}`;
+}
+
+function formatPlayerActionOrder(playerActions, fallbackActionName) {
+  if (playerActions.length <= 0) {
+    return fallbackActionName;
+  }
+
+  return playerActions.map(action => action.actionName).join(" -> ");
+}
+
+function formatPlayerActionDamage(playerActions, fallbackActionName, fallbackDamage) {
+  if (playerActions.length <= 0) {
+    return `${fallbackActionName}:${fallbackDamage}`;
+  }
+
+  return playerActions.map(action => `${action.actionName}:${action.damageDealt}`).join(", ");
 }
 
 async function fight(options = {}) {

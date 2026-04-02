@@ -10,6 +10,7 @@ const int ExpPerLevelGrowth = 5;
 const int LevelUpAttackBonus = 1;
 const int LevelUpMaxHpBonus = 5;
 const int DefeatSurvivalHp = 1;
+const int PowerStrikeBonusDamage = 1;
 const string PowerStrikeSkillName = "Power Strike";
 const string BasicAttackSkillName = "Basic Attack";
 const string PlayersTableName = "Players";
@@ -170,7 +171,7 @@ app.MapPost("/api/players/{id:int}/fight", async (GameDbContext dbContext, int i
         enemyCurrentHp = basicAttackResult.EnemyHpAfterAction;
     }
 
-    var playerSkillResult = playerActions[^1];
+    var lastPlayerAction = playerActions[^1];
     var playerDamageDealt = playerActions.Sum(action => action.DamageDealt);
     var enemyDefeated = enemyCurrentHp <= 0;
 
@@ -235,7 +236,7 @@ app.MapPost("/api/players/{id:int}/fight", async (GameDbContext dbContext, int i
         ? $"{player.Name} defeated {enemy.Name} and earned {goldReward} gold, {expReward} EXP, 1 Food."
             + (leveledUp ? $" Level up! Now Lv{player.Level}." : "")
         : playerDefeated
-            ? $"{player.Name} was defeated by {enemy.Name}. Enemy was reset. HP is now {player.CurrentHp}/{playerMaxHp}. Use Food before continuing."
+            ? $"{player.Name} was defeated by {enemy.Name}. Enemy was reset. HP is now {player.CurrentHp}/{player.MaxHp}. Use Food before continuing."
             : $"{player.Name} used {string.Join(" -> ", playerActions.Select(action => action.ActionName))} and dealt {playerDamageDealt} total to {enemy.Name}. {enemy.Name} dealt {enemyDamageDealt}. Enemy HP: {enemyCurrentHp}/{enemy.MaxHp}.";
 
     return Results.Ok(new FightResultDto(
@@ -246,7 +247,7 @@ app.MapPost("/api/players/{id:int}/fight", async (GameDbContext dbContext, int i
         enemy.Name,
         enemy.MaxHp,
         enemy.Attack,
-        playerSkillResult.ActionName,
+        lastPlayerAction.ActionName,
         playerActions,
         Math.Max(0, enemyCurrentHp),
         playerDamageDealt,
@@ -472,7 +473,7 @@ static PlayerSkillExecutionResult ExecutePlayerPowerStrikeSkill(Player player, i
 {
     var normalizedEnemyCurrentHp = Math.Max(0, enemyCurrentHp);
     var normalizedPlayerAttack = Math.Max(1, player.Attack);
-    var powerStrikeDamage = normalizedPlayerAttack + 1;
+    var powerStrikeDamage = normalizedPlayerAttack + PowerStrikeBonusDamage;
     var damageDealt = Math.Min(powerStrikeDamage, normalizedEnemyCurrentHp);
     var enemyHpAfterAction = normalizedEnemyCurrentHp - damageDealt;
 
