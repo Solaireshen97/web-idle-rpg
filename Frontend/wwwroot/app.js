@@ -20,6 +20,7 @@ const autoFightStatusElement = document.getElementById("autoFightStatus");
 const startAutoFightButton = document.getElementById("startAutoFightButton");
 const stopAutoFightButton = document.getElementById("stopAutoFightButton");
 const autoUseFoodCheckbox = document.getElementById("autoUseFoodCheckbox");
+const autoUseFoodThresholdSelect = document.getElementById("autoUseFoodThresholdSelect");
 const autoUseFoodStatusElement = document.getElementById("autoUseFoodStatus");
 const autoFightIntervalMs = 1000;
 let autoFightTimerId = null;
@@ -214,9 +215,10 @@ async function useFood() {
 }
 
 function setAutoUseFoodStatus() {
-  autoUseFoodStatusElement.textContent = autoUseFoodCheckbox.checked
-    ? "Auto Use Food: On"
-    : "Auto Use Food: Off";
+  const thresholdPercent = Number.parseInt(autoUseFoodThresholdSelect.value, 10);
+  const thresholdText = Number.isFinite(thresholdPercent) ? `${thresholdPercent}%` : "50%";
+  const stateText = autoUseFoodCheckbox.checked ? "On" : "Off";
+  autoUseFoodStatusElement.textContent = `Auto Use Food: ${stateText} | Threshold: ${thresholdText}`;
 }
 
 function shouldAutoUseFood(player) {
@@ -240,7 +242,13 @@ function shouldAutoUseFood(player) {
     return false;
   }
 
-  return player.currentHp <= (player.maxHp / 2);
+  const thresholdPercent = Number.parseInt(autoUseFoodThresholdSelect.value, 10);
+  if (!Number.isFinite(thresholdPercent) || thresholdPercent <= 0) {
+    return false;
+  }
+
+  const hpThreshold = Math.floor(player.maxHp * thresholdPercent / 100);
+  return player.currentHp <= hpThreshold;
 }
 
 function setAutoFightStatus(isRunning) {
@@ -307,5 +315,6 @@ document.getElementById("useFoodButton").addEventListener("click", useFood);
 startAutoFightButton.addEventListener("click", startAutoFight);
 stopAutoFightButton.addEventListener("click", stopAutoFight);
 autoUseFoodCheckbox.addEventListener("change", setAutoUseFoodStatus);
+autoUseFoodThresholdSelect.addEventListener("change", setAutoUseFoodStatus);
 setAutoFightStatus(false);
 setAutoUseFoodStatus();
