@@ -197,9 +197,12 @@ app.MapPost("/api/players/{id:int}/fight", async (GameDbContext dbContext, int i
     var enemyDamageDealt = 0;
     if (!enemyDefeated)
     {
-        var enemyExtraActionResult = ExecuteEnemyExtraAction(enemy, playerCurrentHp);
-        enemyActions.Add(ToEnemyActionResultDto(enemyExtraActionResult));
-        playerCurrentHp = enemyExtraActionResult.PlayerHpAfterAction;
+        if (ShouldTriggerEnemyExtraAction(enemy, enemyCurrentHp))
+        {
+            var enemyExtraActionResult = ExecuteEnemyExtraAction(enemy, playerCurrentHp);
+            enemyActions.Add(ToEnemyActionResultDto(enemyExtraActionResult));
+            playerCurrentHp = enemyExtraActionResult.PlayerHpAfterAction;
+        }
 
         if (playerCurrentHp > 0)
         {
@@ -535,14 +538,21 @@ static EnemyActionExecutionResult ExecuteEnemyExtraAction(CurrentEnemyState enem
 {
     var normalizedPlayerCurrentHp = Math.Max(0, playerCurrentHp);
     var normalizedEnemyAttack = Math.Max(1, enemy.Attack);
-    var extraDamage = Math.Max(1, normalizedEnemyAttack - 1);
-    var damageDealt = Math.Min(extraDamage, normalizedPlayerCurrentHp);
+    var enemyJabDamage = Math.Max(1, normalizedEnemyAttack - 1);
+    var damageDealt = Math.Min(enemyJabDamage, normalizedPlayerCurrentHp);
     var playerHpAfterAction = normalizedPlayerCurrentHp - damageDealt;
 
     return new EnemyActionExecutionResult(
         EnemyJabActionName,
         damageDealt,
         playerHpAfterAction);
+}
+
+static bool ShouldTriggerEnemyExtraAction(CurrentEnemyState enemy, int enemyCurrentHp)
+{
+    var normalizedEnemyCurrentHp = Math.Max(0, enemyCurrentHp);
+    var normalizedEnemyMaxHp = Math.Max(1, enemy.MaxHp);
+    return normalizedEnemyCurrentHp > normalizedEnemyMaxHp / 2;
 }
 
 static PlayerActionResultDto ToPlayerActionResultDto(PlayerSkillExecutionResult skillResult) =>
