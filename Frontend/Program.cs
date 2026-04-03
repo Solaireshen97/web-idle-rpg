@@ -163,10 +163,10 @@ app.MapPost("/api/players/{id:int}/buy-food", async (IHttpClientFactory httpClie
         return await ForwardResponseAsContentAsync(response);
     }
 
-    var player = await response.Content.ReadFromJsonAsync<PlayerDto>();
-    return player is null
+    var purchaseResult = await response.Content.ReadFromJsonAsync<ShopPurchaseResultDto>();
+    return purchaseResult is null
         ? Results.StatusCode(StatusCodes.Status502BadGateway)
-        : Results.Ok(player);
+        : Results.Ok(purchaseResult);
 });
 
 app.MapPost("/api/players/{id:int}/buy-item/{itemKey}", async (IHttpClientFactory httpClientFactory, int id, string itemKey) =>
@@ -184,10 +184,10 @@ app.MapPost("/api/players/{id:int}/buy-item/{itemKey}", async (IHttpClientFactor
         return await ForwardResponseAsContentAsync(response);
     }
 
-    var player = await response.Content.ReadFromJsonAsync<PlayerDto>();
-    return player is null
+    var purchaseResult = await response.Content.ReadFromJsonAsync<ShopPurchaseResultDto>();
+    return purchaseResult is null
         ? Results.StatusCode(StatusCodes.Status502BadGateway)
-        : Results.Ok(player);
+        : Results.Ok(purchaseResult);
 });
 
 app.MapPost("/api/players/{id:int}/preferred-enemy", async (IHttpClientFactory httpClientFactory, int id, SetPreferredEnemyRequest request) =>

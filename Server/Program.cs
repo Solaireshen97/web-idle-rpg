@@ -564,7 +564,12 @@ static async Task<IResult> BuyShopItemAsync(
     ApplyShopPurchase(player, item);
 
     await dbContext.SaveChangesAsync();
-    return Results.Ok(ToPlayerDto(player));
+    return Results.Ok(new ShopPurchaseResultDto(
+        item.ItemKey,
+        item.DisplayName,
+        item.GoldPrice,
+        item.Effect,
+        ToPlayerDto(player)));
 }
 
 static bool TryGetShopItemDefinition(

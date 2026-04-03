@@ -116,6 +116,28 @@ function formatShopItemPurchaseSummary(shopItem, player) {
   return `Buy ${displayName} success: Spent ${goldPrice} Gold, gained ${foodDelta} Food. Remaining Gold: ${player.gold}, Current Food: ${player.food}.`;
 }
 
+function normalizeShopPurchaseResult(rawResult) {
+  const player = rawResult?.player ?? null;
+  return {
+    itemKey: typeof rawResult?.itemKey === "string" ? rawResult.itemKey : "",
+    displayName: typeof rawResult?.displayName === "string" && rawResult.displayName.trim().length > 0
+      ? rawResult.displayName.trim()
+      : "item",
+    spentGold: Number.isFinite(rawResult?.spentGold) ? rawResult.spentGold : 0,
+    effect: {
+      foodDelta: Number.isFinite(rawResult?.effect?.foodDelta) ? rawResult.effect.foodDelta : 0
+    },
+    player
+  };
+}
+
+function formatShopPurchaseResultSummary(purchaseResult) {
+  const player = purchaseResult?.player ?? null;
+  const currentGold = Number.isFinite(player?.gold) ? player.gold : "?";
+  const currentFood = Number.isFinite(player?.food) ? player.food : "?";
+  return `Buy ${purchaseResult.displayName} success: Spent ${purchaseResult.spentGold} Gold, gained ${purchaseResult.effect.foodDelta} Food. Remaining Gold: ${currentGold}, Current Food: ${currentFood}.`;
+}
+
 function syncShopItemsUi() {
   const rows = currentShopItems.map(item =>
     `<div>${item.displayName} | ${item.goldPrice} Gold | ${getShopItemEffectText(item)} <button type="button" data-shop-item-key="${item.itemKey}">Buy</button></div>`);
@@ -441,18 +463,19 @@ async function buyShopItem(itemKey) {
     return;
   }
 
-  const player = JSON.parse(text);
-  showPlayerStatus(player);
-  showCurrentEnemy(player);
-  const boughtItem = currentShopItems.find(item => item.itemKey === itemKey) ?? null;
-  if (boughtItem) {
-    writeLastResultMessages([formatShopItemPurchaseSummary(boughtItem, player)]);
+  const rawPurchaseResult = JSON.parse(text);
+  const purchaseResult = normalizeShopPurchaseResult(rawPurchaseResult);
+  const player = purchaseResult.player;
+  if (player) {
+    showPlayerStatus(player);
+    showCurrentEnemy(player);
   } else {
-    writeLastResultMessages([
-      `Buy item success: ${itemKey}. Remaining Gold: ${player.gold}, Current Food: ${player.food}.`
-    ]);
+    showPlayerStatus(null);
+    showCurrentEnemy(null);
   }
-  showResult(player);
+
+  writeLastResultMessages([formatShopPurchaseResultSummary(purchaseResult)]);
+  showResult(rawPurchaseResult);
 }
 
 async function setPreferredEnemy() {
