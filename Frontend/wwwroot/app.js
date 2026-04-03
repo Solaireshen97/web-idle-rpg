@@ -213,12 +213,14 @@ async function addGold() {
 function buildFightMessage(fightResult) {
   const statusText = fightResult.enemyDefeated ? "Enemy Defeated" : (fightResult.playerDefeated ? "Player Defeated" : "Ongoing");
   const playerActions = Array.isArray(fightResult.playerActions) ? fightResult.playerActions : [];
+  const enemyActions = Array.isArray(fightResult.enemyActions) ? fightResult.enemyActions : [];
   const actionOrderText = formatPlayerActionOrder(playerActions);
   const actionDamageText = formatPlayerActionDamage(playerActions, fightResult.playerDamageDealt);
-  const enemyActionText = formatEnemyAction(fightResult.enemyActionName, fightResult.enemyDamageDealt);
+  const enemyActionOrderText = formatEnemyActionOrder(enemyActions, fightResult.enemyActionName);
+  const enemyActionDamageText = formatEnemyActionDamage(enemyActions, fightResult.enemyDamageDealt);
   const enemyText = `Enemy: ${fightResult.enemyName} (ATK ${fightResult.enemyAttack})`;
   const enemyHpText = `Enemy HP: ${fightResult.enemyCurrentHp}/${fightResult.enemyMaxHp}`;
-  const roundDamageText = `Round Damage -> You: ${fightResult.playerDamageDealt}, Enemy: ${fightResult.enemyDamageDealt} | Enemy Turn: ${enemyActionText}`;
+  const roundDamageText = `Round Damage -> You: ${fightResult.playerDamageDealt}, Enemy: ${fightResult.enemyDamageDealt} | Enemy Turn: ${enemyActionOrderText} | Enemy Action Damage: ${enemyActionDamageText}`;
   const rewardText = fightResult.enemyDefeated
     ? `Rewards: Gold +${fightResult.goldReward}, EXP +${fightResult.experienceReward}`
     : "Rewards: none";
@@ -243,12 +245,24 @@ function formatPlayerActionDamage(playerActions, fallbackDamage) {
   return playerActions.map(action => `${action.actionName}:${action.damageDealt}`).join(", ");
 }
 
-function formatEnemyAction(enemyActionName, enemyDamageDealt) {
-  if (typeof enemyActionName !== "string" || enemyActionName.trim().length === 0) {
+function formatEnemyActionOrder(enemyActions, fallbackEnemyActionName) {
+  if (enemyActions.length > 0) {
+    return enemyActions.map(action => action.actionName).join(" -> ");
+  }
+
+  if (typeof fallbackEnemyActionName !== "string" || fallbackEnemyActionName.trim().length === 0) {
     return "Skipped";
   }
 
-  return `${enemyActionName}:${enemyDamageDealt}`;
+  return fallbackEnemyActionName;
+}
+
+function formatEnemyActionDamage(enemyActions, fallbackEnemyDamage) {
+  if (enemyActions.length <= 0) {
+    return `Total:${fallbackEnemyDamage}`;
+  }
+
+  return enemyActions.map(action => `${action.actionName}:${action.damageDealt}`).join(", ");
 }
 
 async function fight(options = {}) {

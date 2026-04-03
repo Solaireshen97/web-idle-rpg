@@ -14,6 +14,7 @@ const int PowerStrikeBonusDamage = 1;
 const int PowerStrikeCooldownTurns = 2;
 const string PowerStrikeSkillName = "Power Strike";
 const string BasicAttackSkillName = "Basic Attack";
+const string EnemyJabActionName = "Enemy Jab";
 const string EnemyAttackActionName = "Enemy Attack";
 const string PlayersTableName = "Players";
 const string PreferredEnemyRandomKey = "random";
@@ -192,14 +193,26 @@ app.MapPost("/api/players/{id:int}/fight", async (GameDbContext dbContext, int i
     var playerDamageDealt = playerActions.Sum(action => action.DamageDealt);
     var enemyDefeated = enemyCurrentHp <= 0;
 
+    var enemyActions = new List<EnemyActionResultDto>();
     string? enemyActionName = null;
     var enemyDamageDealt = 0;
     if (!enemyDefeated)
     {
-        var enemyActionResult = ExecuteEnemyAttackAction(enemy, playerCurrentHp);
-        enemyActionName = enemyActionResult.ActionName;
-        enemyDamageDealt = enemyActionResult.DamageDealt;
-        playerCurrentHp = enemyActionResult.PlayerHpAfterAction;
+        var enemyExtraActionResult = ExecuteEnemyExtraAction(enemy, playerCurrentHp);
+        enemyActions.Add(ToEnemyActionResultDto(enemyExtraActionResult));
+        playerCurrentHp = enemyExtraActionResult.PlayerHpAfterAction;
+
+        if (playerCurrentHp > 0)
+        {
+            var enemyAttackActionResult = ExecuteEnemyAttackAction(enemy, playerCurrentHp);
+            enemyActions.Add(ToEnemyActionResultDto(enemyAttackActionResult));
+            playerCurrentHp = enemyAttackActionResult.PlayerHpAfterAction;
+        }
+
+        enemyActionName = enemyActions.Count > 0
+            ? string.Join(" -> ", enemyActions.Select(action => action.ActionName))
+            : null;
+        enemyDamageDealt = enemyActions.Sum(action => action.DamageDealt);
     }
 
     var playerDefeated = playerCurrentHp <= 0;
@@ -268,6 +281,7 @@ app.MapPost("/api/players/{id:int}/fight", async (GameDbContext dbContext, int i
         enemy.MaxHp,
         enemy.Attack,
         playerActions,
+        enemyActions,
         enemyActionName,
         Math.Max(0, enemyCurrentHp),
         playerDamageDealt,
@@ -522,11 +536,31 @@ static EnemyActionExecutionResult ExecuteEnemyAttackAction(CurrentEnemyState ene
         playerHpAfterAction);
 }
 
+static EnemyActionExecutionResult ExecuteEnemyExtraAction(CurrentEnemyState enemy, int playerCurrentHp)
+{
+    var normalizedPlayerCurrentHp = Math.Max(0, playerCurrentHp);
+    var normalizedEnemyAttack = Math.Max(1, enemy.Attack);
+    var extraDamage = Math.Max(1, normalizedEnemyAttack - 1);
+    var damageDealt = Math.Min(extraDamage, normalizedPlayerCurrentHp);
+    var playerHpAfterAction = normalizedPlayerCurrentHp - damageDealt;
+
+    return new EnemyActionExecutionResult(
+        EnemyJabActionName,
+        damageDealt,
+        playerHpAfterAction);
+}
+
 static PlayerActionResultDto ToPlayerActionResultDto(PlayerSkillExecutionResult skillResult) =>
     new(
         skillResult.SkillName,
         skillResult.DamageDealt,
         skillResult.EnemyHpAfterAction);
+
+static EnemyActionResultDto ToEnemyActionResultDto(EnemyActionExecutionResult actionResult) =>
+    new(
+        actionResult.ActionName,
+        actionResult.DamageDealt,
+        actionResult.PlayerHpAfterAction);
 
 file sealed record EnemyTemplate(
     string Name,
