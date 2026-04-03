@@ -21,14 +21,6 @@ const string PreferredEnemyTrainingSlimeKey = "training-slime";
 const string PreferredEnemyWolfKey = "wolf";
 const string PreferredEnemyGoblinKey = "goblin";
 
-var supportedPreferredEnemyKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-{
-    PreferredEnemyRandomKey,
-    PreferredEnemyTrainingSlimeKey,
-    PreferredEnemyWolfKey,
-    PreferredEnemyGoblinKey
-};
-
 var enemyTemplateByKey = new Dictionary<string, EnemyTemplate>(StringComparer.OrdinalIgnoreCase)
 {
     [PreferredEnemyTrainingSlimeKey] = new EnemyTemplate("Training Slime", 24, 2, 5, 5),
@@ -197,7 +189,6 @@ app.MapPost("/api/players/{id:int}/fight", async (GameDbContext dbContext, int i
         ? Math.Max(0, PowerStrikeCooldownTurns - 1)
         : Math.Max(0, powerStrikeCooldownAtTurnStart - 1);
 
-    var lastPlayerAction = playerActions[^1];
     var playerDamageDealt = playerActions.Sum(action => action.DamageDealt);
     var enemyDefeated = enemyCurrentHp <= 0;
 
@@ -276,10 +267,8 @@ app.MapPost("/api/players/{id:int}/fight", async (GameDbContext dbContext, int i
         enemy.Name,
         enemy.MaxHp,
         enemy.Attack,
-        lastPlayerAction.ActionName,
         playerActions,
         enemyActionName,
-        enemyDamageDealt,
         Math.Max(0, enemyCurrentHp),
         playerDamageDealt,
         enemyDamageDealt,

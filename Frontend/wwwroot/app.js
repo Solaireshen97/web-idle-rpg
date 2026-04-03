@@ -29,7 +29,6 @@ const preferredEnemySelect = document.getElementById("preferredEnemySelect");
 const preferredEnemyStatusElement = document.getElementById("preferredEnemyStatus");
 const defaultAutoUseFoodThresholdPercent = 50;
 const defaultPreferredEnemyKey = "random";
-const defaultBasicAttackSkillName = "Basic Attack";
 const defaultPowerStrikeEnabled = true;
 const autoFightIntervalMs = 1000;
 let autoFightTimerId = null;
@@ -214,10 +213,9 @@ async function addGold() {
 function buildFightMessage(fightResult) {
   const statusText = fightResult.enemyDefeated ? "Enemy Defeated" : (fightResult.playerDefeated ? "Player Defeated" : "Ongoing");
   const playerActions = Array.isArray(fightResult.playerActions) ? fightResult.playerActions : [];
-  const fallbackActionName = fightResult.playerSkillName ?? defaultBasicAttackSkillName;
-  const actionOrderText = formatPlayerActionOrder(playerActions, fallbackActionName);
-  const actionDamageText = formatPlayerActionDamage(playerActions, fallbackActionName, fightResult.playerDamageDealt);
-  const enemyActionText = formatEnemyAction(fightResult.enemyActionName, fightResult.enemyActionDamageDealt, fightResult.enemyDamageDealt);
+  const actionOrderText = formatPlayerActionOrder(playerActions);
+  const actionDamageText = formatPlayerActionDamage(playerActions, fightResult.playerDamageDealt);
+  const enemyActionText = formatEnemyAction(fightResult.enemyActionName, fightResult.enemyDamageDealt);
   const enemyText = `Enemy: ${fightResult.enemyName} (ATK ${fightResult.enemyAttack})`;
   const enemyHpText = `Enemy HP: ${fightResult.enemyCurrentHp}/${fightResult.enemyMaxHp}`;
   const roundDamageText = `Round Damage -> You: ${fightResult.playerDamageDealt}, Enemy: ${fightResult.enemyDamageDealt} | Enemy Turn: ${enemyActionText}`;
@@ -229,29 +227,28 @@ function buildFightMessage(fightResult) {
   return `${enemyText} | ${resultText} | ${fightResult.summary}`;
 }
 
-function formatPlayerActionOrder(playerActions, fallbackActionName) {
+function formatPlayerActionOrder(playerActions) {
   if (playerActions.length <= 0) {
-    return fallbackActionName;
+    return "None";
   }
 
   return playerActions.map(action => action.actionName).join(" -> ");
 }
 
-function formatPlayerActionDamage(playerActions, fallbackActionName, fallbackDamage) {
+function formatPlayerActionDamage(playerActions, fallbackDamage) {
   if (playerActions.length <= 0) {
-    return `${fallbackActionName}:${fallbackDamage}`;
+    return `Total:${fallbackDamage}`;
   }
 
   return playerActions.map(action => `${action.actionName}:${action.damageDealt}`).join(", ");
 }
 
-function formatEnemyAction(enemyActionName, enemyActionDamageDealt, fallbackEnemyDamage) {
+function formatEnemyAction(enemyActionName, enemyDamageDealt) {
   if (typeof enemyActionName !== "string" || enemyActionName.trim().length === 0) {
     return "Skipped";
   }
 
-  const damage = Number.isFinite(enemyActionDamageDealt) ? enemyActionDamageDealt : fallbackEnemyDamage;
-  return `${enemyActionName}:${damage}`;
+  return `${enemyActionName}:${enemyDamageDealt}`;
 }
 
 async function fight(options = {}) {
