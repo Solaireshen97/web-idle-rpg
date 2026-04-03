@@ -6,6 +6,7 @@ using Shared.Shop;
 
 const int GoldIncrementAmount = 10;
 const int FoodHealAmount = 10;
+const int UseFoodConsumedAmount = 1;
 const int BaseExpPerLevel = 10;
 const int ExpPerLevelGrowth = 5;
 const int LevelUpAttackBonus = 1;
@@ -128,9 +129,8 @@ app.MapPost("/api/players/{id:int}/use-food", async (GameDbContext dbContext, in
         return Results.BadRequest(new { message = "Not enough food." });
     }
 
-    const int consumedAmount = 1;
     var hpBeforeUseFood = player.CurrentHp;
-    player.Food -= consumedAmount;
+    player.Food -= UseFoodConsumedAmount;
     player.CurrentHp = Math.Min(player.MaxHp, player.CurrentHp + FoodHealAmount);
     var recoveredHp = Math.Max(0, player.CurrentHp - hpBeforeUseFood);
     player.UpdatedAt = DateTime.UtcNow;
@@ -139,7 +139,7 @@ app.MapPost("/api/players/{id:int}/use-food", async (GameDbContext dbContext, in
     return Results.Ok(new UseFoodResultDto(
         ActionName: "Use Food",
         ResourceKey: "food",
-        ConsumedAmount: consumedAmount,
+        ConsumedAmount: UseFoodConsumedAmount,
         RecoveredHp: recoveredHp,
         Player: ToPlayerDto(player)));
 });
