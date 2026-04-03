@@ -12,6 +12,7 @@ const int ExpPerLevelGrowth = 5;
 const int LevelUpAttackBonus = 1;
 const int LevelUpMaxHpBonus = 5;
 const int DefeatSurvivalHp = 1;
+const int FoodRewardPerEnemyDefeat = 1;
 const int PowerStrikeBonusDamage = 1;
 const int PowerStrikeCooldownTurns = 2;
 const string PowerStrikeSkillName = "Power Strike";
@@ -410,7 +411,7 @@ static EnemyDefeatSettlementResult ApplyEnemyDefeatSettlement(
     var expReward = enemy.ExperienceReward;
     player.Gold += goldReward;
     player.Experience += expReward;
-    player.Food += 1;
+    player.Food += FoodRewardPerEnemyDefeat;
     player.CurrentHp = Math.Max(0, playerCurrentHp);
 
     var levelUpHpRecovery = 0;
@@ -439,7 +440,7 @@ static EnemyDefeatSettlementResult ApplyEnemyDefeatSettlement(
     return new EnemyDefeatSettlementResult(
         goldReward,
         expReward,
-        1,
+        FoodRewardPerEnemyDefeat,
         leveledUp);
 }
 
