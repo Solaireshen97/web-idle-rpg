@@ -316,10 +316,22 @@ function formatFightRewardText(fightResult) {
   }
 
   const rewards = fightResult?.rewards ?? null;
-  const goldReward = Number.isFinite(rewards?.gold) ? rewards.gold : (Number.isFinite(fightResult?.goldReward) ? fightResult.goldReward : 0);
-  const experienceReward = Number.isFinite(rewards?.experience) ? rewards.experience : (Number.isFinite(fightResult?.experienceReward) ? fightResult.experienceReward : 0);
-  const foodReward = Number.isFinite(rewards?.food) ? rewards.food : 0;
+  const goldReward = getNumericValueWithFallback(rewards?.gold, fightResult?.goldReward);
+  const experienceReward = getNumericValueWithFallback(rewards?.experience, fightResult?.experienceReward);
+  const foodReward = getNumericValueWithFallback(rewards?.food, 0);
   return `Rewards: Gold +${goldReward}, EXP +${experienceReward}, Food +${foodReward}`;
+}
+
+function getNumericValueWithFallback(primaryValue, fallbackValue) {
+  if (Number.isFinite(primaryValue)) {
+    return primaryValue;
+  }
+
+  if (Number.isFinite(fallbackValue)) {
+    return fallbackValue;
+  }
+
+  return 0;
 }
 
 function formatPlayerActionOrder(playerActions) {
