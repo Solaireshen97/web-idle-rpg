@@ -2,10 +2,10 @@ using System.Data;
 using Microsoft.EntityFrameworkCore;
 using Server.Data;
 using Shared.Players;
+using Shared.Shop;
 
 const int GoldIncrementAmount = 10;
 const int FoodHealAmount = 10;
-const int FoodPurchaseGoldCost = 5;
 const int BaseExpPerLevel = 10;
 const int ExpPerLevelGrowth = 5;
 const int LevelUpAttackBonus = 1;
@@ -31,6 +31,11 @@ var enemyTemplateByKey = new Dictionary<string, EnemyTemplate>(StringComparer.Or
 };
 
 var enemyTemplates = enemyTemplateByKey.Values.ToArray();
+var foodShopItem = new ShopItemDefinitionDto(
+    ItemKey: "food",
+    DisplayName: "Food",
+    GoldPrice: 5,
+    Effect: new ShopItemEffectDto(FoodDelta: 1));
 
 var builder = WebApplication.CreateBuilder(args);
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection")
@@ -51,6 +56,8 @@ using (var scope = app.Services.CreateScope())
 }
 
 app.MapGet("/api/ping", () => Results.Ok(new { message = "pong" }));
+
+app.MapGet("/api/shop/items/food", () => Results.Ok(foodShopItem));
 
 app.MapPost("/api/players", async (GameDbContext dbContext, CreatePlayerRequest request) =>
 {
@@ -122,13 +129,13 @@ app.MapPost("/api/players/{id:int}/buy-food", async (GameDbContext dbContext, in
         return Results.NotFound(new { message = "Player not found." });
     }
 
-    if (player.Gold < FoodPurchaseGoldCost)
+    if (player.Gold < foodShopItem.GoldPrice)
     {
-        return Results.BadRequest(new { message = $"Not enough gold. Need {FoodPurchaseGoldCost} gold to buy 1 Food." });
+        return Results.BadRequest(new { message = $"Not enough gold. Need {foodShopItem.GoldPrice} gold to buy 1 {foodShopItem.DisplayName}." });
     }
 
-    player.Gold -= FoodPurchaseGoldCost;
-    player.Food += 1;
+    player.Gold -= foodShopItem.GoldPrice;
+    player.Food += foodShopItem.Effect.FoodDelta;
     player.UpdatedAt = DateTime.UtcNow;
 
     await dbContext.SaveChangesAsync();

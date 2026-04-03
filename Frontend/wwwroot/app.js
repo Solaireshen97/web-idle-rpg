@@ -31,10 +31,17 @@ const defaultAutoUseFoodThresholdPercent = 50;
 const defaultPreferredEnemyKey = "random";
 const defaultPowerStrikeEnabled = true;
 const autoFightIntervalMs = 1000;
+const defaultFoodShopItem = {
+  itemKey: "food",
+  displayName: "Food",
+  goldPrice: 5,
+  effect: { foodDelta: 1 }
+};
 let autoFightTimerId = null;
 let autoFightTickInProgress = false;
 let currentPreferredEnemyKey = defaultPreferredEnemyKey;
 let currentPowerStrikeEnabled = defaultPowerStrikeEnabled;
+let currentFoodShopItem = { ...defaultFoodShopItem };
 
 const preferredEnemyDisplayNameByKey = {
   random: "Random",
@@ -91,6 +98,54 @@ function writeLastResultMessages(messages) {
   fightResultElement.textContent = normalizedMessages.length > 0
     ? normalizedMessages.join(" | ")
     : "No action yet.";
+}
+
+function formatBuyFoodButtonText(foodShopItem) {
+  const itemName = foodShopItem?.displayName ?? defaultFoodShopItem.displayName;
+  const goldPrice = Number.isFinite(foodShopItem?.goldPrice) ? foodShopItem.goldPrice : defaultFoodShopItem.goldPrice;
+  const foodDelta = Number.isFinite(foodShopItem?.effect?.foodDelta) ? foodShopItem.effect.foodDelta : defaultFoodShopItem.effect.foodDelta;
+  return `Buy ${foodDelta} ${itemName} (-${goldPrice} Gold)`;
+}
+
+function syncFoodShopUi() {
+  const buyFoodButton = document.getElementById("buyFoodButton");
+  buyFoodButton.textContent = formatBuyFoodButtonText(currentFoodShopItem);
+}
+
+function normalizeFoodShopItem(rawItem) {
+  const itemKey = typeof rawItem?.itemKey === "string" && rawItem.itemKey.trim().length > 0
+    ? rawItem.itemKey.trim().toLowerCase()
+    : defaultFoodShopItem.itemKey;
+  const displayName = typeof rawItem?.displayName === "string" && rawItem.displayName.trim().length > 0
+    ? rawItem.displayName.trim()
+    : defaultFoodShopItem.displayName;
+  const goldPrice = Number.isFinite(rawItem?.goldPrice) && rawItem.goldPrice >= 0
+    ? rawItem.goldPrice
+    : defaultFoodShopItem.goldPrice;
+  const foodDelta = Number.isFinite(rawItem?.effect?.foodDelta)
+    ? rawItem.effect.foodDelta
+    : defaultFoodShopItem.effect.foodDelta;
+
+  return {
+    itemKey,
+    displayName,
+    goldPrice,
+    effect: { foodDelta }
+  };
+}
+
+async function loadFoodShopItemDefinition() {
+  const response = await fetch("/api/shop/items/food");
+  if (!response.ok) {
+    currentFoodShopItem = { ...defaultFoodShopItem };
+    syncFoodShopUi();
+    return;
+  }
+
+  const text = await response.text();
+  const item = JSON.parse(text);
+  currentFoodShopItem = normalizeFoodShopItem(item);
+  syncFoodShopUi();
 }
 
 function showPlayerStatus(player) {
@@ -376,8 +431,13 @@ async function buyFood() {
   const player = JSON.parse(text);
   showPlayerStatus(player);
   showCurrentEnemy(player);
+  const itemName = currentFoodShopItem.displayName ?? defaultFoodShopItem.displayName;
+  const goldPrice = Number.isFinite(currentFoodShopItem.goldPrice) ? currentFoodShopItem.goldPrice : defaultFoodShopItem.goldPrice;
+  const foodDelta = Number.isFinite(currentFoodShopItem.effect?.foodDelta)
+    ? currentFoodShopItem.effect.foodDelta
+    : defaultFoodShopItem.effect.foodDelta;
   writeLastResultMessages([
-    `Buy Food success: Spent 5 Gold, gained 1 Food. Remaining Gold: ${player.gold}, Current Food: ${player.food}.`
+    `Buy ${itemName} success: Spent ${goldPrice} Gold, gained ${foodDelta} ${itemName}. Remaining Gold: ${player.gold}, Current Food: ${player.food}.`
   ]);
   showResult(player);
 }
@@ -556,5 +616,6 @@ preferredEnemySelect.addEventListener("change", setPreferredEnemy);
 powerStrikeCheckbox.addEventListener("change", setPowerStrikeEnabled);
 setAutoFightStatus(false);
 setAutoUseFoodStatus();
+loadFoodShopItemDefinition();
 syncPreferredEnemyUi(null);
 syncPowerStrikeUi(null);

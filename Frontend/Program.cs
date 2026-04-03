@@ -1,5 +1,6 @@
 using System.Net.Http.Json;
 using Shared.Players;
+using Shared.Shop;
 
 var builder = WebApplication.CreateBuilder(args);
 var serverApiBaseUrl = builder.Configuration["ServerApiBaseUrl"] ?? "http://localhost:5238";
@@ -61,6 +62,27 @@ app.MapGet("/api/players/{id:int}", async (IHttpClientFactory httpClientFactory,
     return player is null
         ? Results.StatusCode(StatusCodes.Status502BadGateway)
         : Results.Ok(player);
+});
+
+app.MapGet("/api/shop/items/food", async (IHttpClientFactory httpClientFactory) =>
+{
+    var serverApi = httpClientFactory.CreateClient("ServerApi");
+    var response = await serverApi.GetAsync("/api/shop/items/food");
+
+    if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+    {
+        return Results.NotFound();
+    }
+
+    if (!response.IsSuccessStatusCode)
+    {
+        return await ForwardResponseAsContentAsync(response);
+    }
+
+    var item = await response.Content.ReadFromJsonAsync<ShopItemDefinitionDto>();
+    return item is null
+        ? Results.StatusCode(StatusCodes.Status502BadGateway)
+        : Results.Ok(item);
 });
 
 app.MapPost("/api/players/{id:int}/gold", async (IHttpClientFactory httpClientFactory, int id) =>
