@@ -31,7 +31,8 @@ section h2 {
 }
 
 input[type="text"],
-input[type="number"] {
+input[type="number"],
+select {
   padding: 4px 8px;
   border: 1px solid #ccc;
   border-radius: 4px;

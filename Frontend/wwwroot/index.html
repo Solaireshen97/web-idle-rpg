@@ -34,9 +34,24 @@
       <span class="label">Attack</span><span id="playerStatusAttack">-</span>
       <span class="label">HP</span><span id="playerStatusCurrentHp">-</span>
       <span class="label">Max HP</span><span id="playerStatusMaxHp">-</span>
+      <span class="label">Preferred Enemy</span><span id="playerStatusPreferredEnemy">-</span>
       <span class="label">Created</span><span id="playerStatusCreatedAt">-</span>
       <span class="label">Updated</span><span id="playerStatusUpdatedAt">-</span>
     </div>
+  </section>
+
+  <section>
+    <h2>Preferred Enemy</h2>
+    <label>
+      Next New Fight Enemy
+      <select id="preferredEnemySelect">
+        <option value="random">Random</option>
+        <option value="training-slime">Training Slime</option>
+        <option value="wolf">Wolf</option>
+        <option value="goblin">Goblin</option>
+      </select>
+    </label>
+    <div id="preferredEnemyStatus">Preferred Enemy: Random</div>
   </section>
 
   <section>
@@ -56,10 +71,37 @@
   </section>
 
   <section>
+    <h2>Shop</h2>
+    <div id="shopItemsContainer">No shop items.</div>
+  </section>
+
+  <section>
     <h2>Auto Fight</h2>
     <button id="startAutoFightButton" type="button">Start Auto Fight</button>
     <button id="stopAutoFightButton" type="button">Stop Auto Fight</button>
+    <label>
+      <input id="autoUseFoodCheckbox" type="checkbox" />
+      Auto Use Food
+    </label>
+    <label>
+      Trigger Threshold
+      <select id="autoUseFoodThresholdSelect">
+        <option value="25">25%</option>
+        <option value="50" selected>50%</option>
+        <option value="75">75%</option>
+      </select>
+    </label>
     <div id="autoFightStatus">Auto Fight: Stopped</div>
+    <div id="autoUseFoodStatus">Auto Use Food: Off</div>
+  </section>
+
+  <section>
+    <h2>Power Strike</h2>
+    <label>
+      <input id="powerStrikeCheckbox" type="checkbox" />
+      Enable Power Strike in player turn
+    </label>
+    <div id="powerStrikeStatus">Power Strike: On</div>
   </section>
 
   <section>
