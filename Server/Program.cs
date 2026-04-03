@@ -128,12 +128,20 @@ app.MapPost("/api/players/{id:int}/use-food", async (GameDbContext dbContext, in
         return Results.BadRequest(new { message = "Not enough food." });
     }
 
-    player.Food -= 1;
+    const int consumedAmount = 1;
+    var hpBeforeUseFood = player.CurrentHp;
+    player.Food -= consumedAmount;
     player.CurrentHp = Math.Min(player.MaxHp, player.CurrentHp + FoodHealAmount);
+    var recoveredHp = Math.Max(0, player.CurrentHp - hpBeforeUseFood);
     player.UpdatedAt = DateTime.UtcNow;
 
     await dbContext.SaveChangesAsync();
-    return Results.Ok(ToPlayerDto(player));
+    return Results.Ok(new UseFoodResultDto(
+        ActionName: "Use Food",
+        ResourceKey: "food",
+        ConsumedAmount: consumedAmount,
+        RecoveredHp: recoveredHp,
+        Player: ToPlayerDto(player)));
 });
 
 app.MapPost("/api/players/{id:int}/buy-food", async (GameDbContext dbContext, int id) =>

@@ -119,6 +119,18 @@ function formatShopPurchaseResultSummary(purchaseResult) {
   return `Buy ${displayName} success: Spent ${spentGold} Gold, gained ${foodDelta} Food. Remaining Gold: ${currentGold}, Current Food: ${currentFood}.`;
 }
 
+function formatUseFoodResultSummary(useFoodResult, source) {
+  const player = useFoodResult?.player ?? null;
+  const actionName = source === "auto" ? "Auto Use Food" : (typeof useFoodResult?.actionName === "string" && useFoodResult.actionName.trim().length > 0
+    ? useFoodResult.actionName.trim()
+    : "Use Food");
+  const consumedAmount = Number.isFinite(useFoodResult?.consumedAmount) ? useFoodResult.consumedAmount : 1;
+  const recoveredHp = Number.isFinite(useFoodResult?.recoveredHp) ? useFoodResult.recoveredHp : 0;
+  const currentHp = Number.isFinite(player?.currentHp) ? player.currentHp : "?";
+  const maxHp = Number.isFinite(player?.maxHp) ? player.maxHp : "?";
+  return `${actionName}: used ${consumedAmount} Food and recovered ${recoveredHp} HP. Current HP: ${currentHp}/${maxHp}.`;
+}
+
 function syncShopItemsUi() {
   const rows = currentShopItems.map(item =>
     `<div>${item.displayName} | ${item.goldPrice} Gold | ${getShopItemEffectText(item)} <button type="button" data-shop-item-key="${item.itemKey}">Buy</button></div>`);
@@ -375,7 +387,6 @@ async function fight(options = {}) {
 async function useFood(options = {}) {
   const { writeLastResult = true, source = "manual" } = options;
   const id = playerIdInput.value;
-  const hpBeforeUseFood = Number.parseInt(playerStatusCurrentHpElement.textContent ?? "", 10);
   const response = await fetch(`/api/players/${encodeURIComponent(id)}/use-food`, {
     method: "POST"
   });
@@ -399,24 +410,20 @@ async function useFood(options = {}) {
     return;
   }
 
-  const player = JSON.parse(text);
+  const useFoodResult = JSON.parse(text);
+  const player = useFoodResult.player;
   showPlayerStatus(player);
   showCurrentEnemy(player);
-  const recoveredHp = Number.isFinite(hpBeforeUseFood)
-    ? Math.max(0, player.currentHp - hpBeforeUseFood)
-    : null;
-  const foodActionPrefix = source === "auto" ? "Auto Use Food" : "Use Food";
-  const foodMessage = recoveredHp === null
-    ? `${foodActionPrefix}: ${player.name} used 1 Food. Current HP: ${player.currentHp}/${player.maxHp}.`
-    : `${foodActionPrefix}: ${player.name} used 1 Food and recovered ${recoveredHp} HP. Current HP: ${player.currentHp}/${player.maxHp}.`;
+  const foodMessage = formatUseFoodResultSummary(useFoodResult, source);
 
   if (writeLastResult) {
     writeLastResultMessages([foodMessage]);
   }
 
-  showResult(player);
+  showResult(useFoodResult);
   return {
     player,
+    useFoodResult,
     message: foodMessage
   };
 }
