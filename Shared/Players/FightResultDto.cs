@@ -32,4 +32,5 @@ public sealed record EnemyActionResultDto(
 public sealed record FightRewardResultDto(
     int Gold,
     int Experience,
-    int Food);
+    int Food,
+    ResourceDeltaDto ResourcesDelta);

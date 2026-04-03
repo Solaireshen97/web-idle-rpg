@@ -140,6 +140,10 @@ app.MapPost("/api/players/{id:int}/use-food", async (GameDbContext dbContext, in
         ActionName: "Use Food",
         ResourceKey: "food",
         ConsumedAmount: UseFoodConsumedAmount,
+        ResourcesDelta: new ResourceDeltaDto(
+            GoldDelta: 0,
+            ExperienceDelta: 0,
+            FoodDelta: -UseFoodConsumedAmount),
         RecoveredHp: recoveredHp,
         Player: ToPlayerDto(player)));
 });
@@ -263,7 +267,11 @@ app.MapPost("/api/players/{id:int}/fight", async (GameDbContext dbContext, int i
         new FightRewardResultDto(
             settlementResult.GoldReward,
             settlementResult.ExpReward,
-            settlementResult.FoodReward),
+            settlementResult.FoodReward,
+            new ResourceDeltaDto(
+                GoldDelta: settlementResult.GoldReward,
+                ExperienceDelta: settlementResult.ExpReward,
+                FoodDelta: settlementResult.FoodReward)),
         settlementResult.LeveledUp,
         enemy.Name,
         enemy.MaxHp,
@@ -584,6 +592,10 @@ static async Task<IResult> BuyShopItemAsync(
         item.ItemKey,
         item.DisplayName,
         item.GoldPrice,
+        new ResourceDeltaDto(
+            GoldDelta: -item.GoldPrice,
+            ExperienceDelta: 0,
+            FoodDelta: item.Effect.FoodDelta),
         item.Effect,
         ToPlayerDto(player)));
 }

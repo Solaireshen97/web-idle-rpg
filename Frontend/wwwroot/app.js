@@ -112,11 +112,13 @@ function formatShopPurchaseResultSummary(purchaseResult) {
   const displayName = typeof purchaseResult?.displayName === "string" && purchaseResult.displayName.trim().length > 0
     ? purchaseResult.displayName.trim()
     : "item";
+  const resourcesDelta = purchaseResult?.resourcesDelta ?? null;
   const spentGold = Number.isFinite(purchaseResult?.spentGold) ? purchaseResult.spentGold : 0;
-  const foodDelta = Number.isFinite(purchaseResult?.effect?.foodDelta) ? purchaseResult.effect.foodDelta : 0;
+  const goldDelta = getNumericValueWithFallback(resourcesDelta?.goldDelta, -spentGold);
+  const foodDelta = getNumericValueWithFallback(resourcesDelta?.foodDelta, purchaseResult?.effect?.foodDelta);
   const currentGold = Number.isFinite(player?.gold) ? player.gold : "?";
   const currentFood = Number.isFinite(player?.food) ? player.food : "?";
-  return `Buy ${displayName} success: Spent ${spentGold} Gold, gained ${foodDelta} Food. Remaining Gold: ${currentGold}, Current Food: ${currentFood}.`;
+  return `Buy ${displayName} success: Resource Delta (Gold ${formatSignedDelta(goldDelta)}, EXP ${formatSignedDelta(0)}, Food ${formatSignedDelta(foodDelta)}). Remaining Gold: ${currentGold}, Current Food: ${currentFood}.`;
 }
 
 function formatUseFoodResultSummary(useFoodResult, source) {
@@ -125,10 +127,12 @@ function formatUseFoodResultSummary(useFoodResult, source) {
     ? useFoodResult.actionName.trim()
     : "Use Food");
   const consumedAmount = Number.isFinite(useFoodResult?.consumedAmount) ? useFoodResult.consumedAmount : 1;
+  const resourcesDelta = useFoodResult?.resourcesDelta ?? null;
+  const foodDelta = getNumericValueWithFallback(resourcesDelta?.foodDelta, -consumedAmount);
   const recoveredHp = Number.isFinite(useFoodResult?.recoveredHp) ? useFoodResult.recoveredHp : 0;
   const currentHp = Number.isFinite(player?.currentHp) ? player.currentHp : "?";
   const maxHp = Number.isFinite(player?.maxHp) ? player.maxHp : "?";
-  return `${actionName}: used ${consumedAmount} Food and recovered ${recoveredHp} HP. Current HP: ${currentHp}/${maxHp}.`;
+  return `${actionName}: Resource Delta (Gold ${formatSignedDelta(0)}, EXP ${formatSignedDelta(0)}, Food ${formatSignedDelta(foodDelta)}), recovered ${recoveredHp} HP. Current HP: ${currentHp}/${maxHp}.`;
 }
 
 function syncShopItemsUi() {
@@ -319,7 +323,11 @@ function formatFightRewardText(fightResult) {
   const goldReward = getNumericValueWithFallback(rewards?.gold, fightResult?.goldReward);
   const experienceReward = getNumericValueWithFallback(rewards?.experience, fightResult?.experienceReward);
   const foodReward = getNumericValueWithFallback(rewards?.food, 0);
-  return `Rewards: Gold +${goldReward}, EXP +${experienceReward}, Food +${foodReward}`;
+  const resourcesDelta = rewards?.resourcesDelta ?? null;
+  const goldDelta = getNumericValueWithFallback(resourcesDelta?.goldDelta, goldReward);
+  const experienceDelta = getNumericValueWithFallback(resourcesDelta?.experienceDelta, experienceReward);
+  const foodDelta = getNumericValueWithFallback(resourcesDelta?.foodDelta, foodReward);
+  return `Rewards: Resource Delta (Gold ${formatSignedDelta(goldDelta)}, EXP ${formatSignedDelta(experienceDelta)}, Food ${formatSignedDelta(foodDelta)})`;
 }
 
 function getNumericValueWithFallback(primaryValue, fallbackValue) {
@@ -332,6 +340,15 @@ function getNumericValueWithFallback(primaryValue, fallbackValue) {
   }
 
   return 0;
+}
+
+function formatSignedDelta(value) {
+  const normalized = Number.isFinite(value) ? value : 0;
+  if (normalized > 0) {
+    return `+${normalized}`;
+  }
+
+  return `${normalized}`;
 }
 
 function formatPlayerActionOrder(playerActions) {
