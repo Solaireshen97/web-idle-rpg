@@ -562,56 +562,77 @@ static EnemyTurnExecutionResult ExecuteEnemyTurnActionSequence(
 
 static PlayerSkillExecutionResult ExecutePlayerBasicAttackSkill(Player player, int enemyCurrentHp)
 {
-    var normalizedEnemyCurrentHp = Math.Max(0, enemyCurrentHp);
-    var normalizedPlayerAttack = Math.Max(1, player.Attack);
-    var damageDealt = Math.Min(normalizedPlayerAttack, normalizedEnemyCurrentHp);
-    var enemyHpAfterAction = normalizedEnemyCurrentHp - damageDealt;
+    var damageSettlement = ResolveDamageSettlement(
+        baseAttackValue: player.Attack,
+        flatDamageModifier: 0,
+        minimumDamage: 0,
+        targetCurrentHp: enemyCurrentHp);
 
     return new PlayerSkillExecutionResult(
         BasicAttackSkillName,
-        damageDealt,
-        enemyHpAfterAction);
+        damageSettlement.DamageDealt,
+        damageSettlement.TargetHpAfterDamage);
 }
 
 static PlayerSkillExecutionResult ExecutePlayerPowerStrikeSkill(Player player, int enemyCurrentHp)
 {
-    var normalizedEnemyCurrentHp = Math.Max(0, enemyCurrentHp);
-    var normalizedPlayerAttack = Math.Max(1, player.Attack);
-    var powerStrikeDamage = normalizedPlayerAttack + PowerStrikeBonusDamage;
-    var damageDealt = Math.Min(powerStrikeDamage, normalizedEnemyCurrentHp);
-    var enemyHpAfterAction = normalizedEnemyCurrentHp - damageDealt;
+    var damageSettlement = ResolveDamageSettlement(
+        baseAttackValue: player.Attack,
+        flatDamageModifier: PowerStrikeBonusDamage,
+        minimumDamage: 0,
+        targetCurrentHp: enemyCurrentHp);
 
     return new PlayerSkillExecutionResult(
         PowerStrikeSkillName,
-        damageDealt,
-        enemyHpAfterAction);
+        damageSettlement.DamageDealt,
+        damageSettlement.TargetHpAfterDamage);
 }
 
 static EnemyActionExecutionResult ExecuteEnemyAttackAction(CurrentEnemyState enemy, int playerCurrentHp)
 {
-    var normalizedPlayerCurrentHp = Math.Max(0, playerCurrentHp);
-    var normalizedEnemyAttack = Math.Max(1, enemy.Attack);
-    var damageDealt = Math.Min(normalizedEnemyAttack, normalizedPlayerCurrentHp);
-    var playerHpAfterAction = normalizedPlayerCurrentHp - damageDealt;
+    var damageSettlement = ResolveDamageSettlement(
+        baseAttackValue: enemy.Attack,
+        flatDamageModifier: 0,
+        minimumDamage: 0,
+        targetCurrentHp: playerCurrentHp);
 
     return new EnemyActionExecutionResult(
         EnemyAttackActionName,
-        damageDealt,
-        playerHpAfterAction);
+        damageSettlement.DamageDealt,
+        damageSettlement.TargetHpAfterDamage);
 }
 
 static EnemyActionExecutionResult ExecuteEnemyExtraAction(CurrentEnemyState enemy, int playerCurrentHp)
 {
-    var normalizedPlayerCurrentHp = Math.Max(0, playerCurrentHp);
-    var normalizedEnemyAttack = Math.Max(1, enemy.Attack);
-    var enemyJabDamage = Math.Max(1, normalizedEnemyAttack - 1);
-    var damageDealt = Math.Min(enemyJabDamage, normalizedPlayerCurrentHp);
-    var playerHpAfterAction = normalizedPlayerCurrentHp - damageDealt;
+    var damageSettlement = ResolveDamageSettlement(
+        baseAttackValue: enemy.Attack,
+        flatDamageModifier: -1,
+        minimumDamage: 1,
+        targetCurrentHp: playerCurrentHp);
 
     return new EnemyActionExecutionResult(
         EnemyJabActionName,
+        damageSettlement.DamageDealt,
+        damageSettlement.TargetHpAfterDamage);
+}
+
+static DamageSettlementResult ResolveDamageSettlement(
+    int baseAttackValue,
+    int flatDamageModifier,
+    int minimumDamage,
+    int targetCurrentHp)
+{
+    var normalizedTargetCurrentHp = Math.Max(0, targetCurrentHp);
+    var normalizedBaseAttackValue = Math.Max(1, baseAttackValue);
+    var normalizedMinimumDamage = Math.Max(0, minimumDamage);
+    var rawDamage = normalizedBaseAttackValue + flatDamageModifier;
+    var adjustedDamage = Math.Max(normalizedMinimumDamage, rawDamage);
+    var damageDealt = Math.Min(adjustedDamage, normalizedTargetCurrentHp);
+    var targetHpAfterDamage = normalizedTargetCurrentHp - damageDealt;
+
+    return new DamageSettlementResult(
         damageDealt,
-        playerHpAfterAction);
+        targetHpAfterDamage);
 }
 
 static bool ShouldTriggerEnemyExtraAction(CurrentEnemyState enemy, int enemyCurrentHp)
@@ -657,6 +678,10 @@ file sealed record EnemyActionExecutionResult(
     string ActionName,
     int DamageDealt,
     int PlayerHpAfterAction);
+
+file sealed record DamageSettlementResult(
+    int DamageDealt,
+    int TargetHpAfterDamage);
 
 file enum PlayerTurnActionType
 {
