@@ -194,67 +194,32 @@ app.MapPost("/api/players/{id:int}/fight", async (GameDbContext dbContext, int i
     }
 
     var playerDefeated = playerCurrentHp <= 0;
-    var goldReward = enemyDefeated ? enemy.GoldReward : 0;
-    var expReward = enemyDefeated ? enemy.ExperienceReward : 0;
-    var leveledUp = false;
-    if (enemyDefeated)
-    {
-        player.Gold += goldReward;
-        player.Experience += expReward;
-        player.Food += 1;
-        player.CurrentHp = Math.Max(0, playerCurrentHp);
-        var levelUpHpRecovery = 0;
-
-        while (true)
-        {
-            var requiredExpForNextLevel = GetRequiredExpForNextLevel(player.Level);
-            if (player.Experience < requiredExpForNextLevel)
-            {
-                break;
-            }
-
-            player.Experience -= requiredExpForNextLevel;
-            player.Level += 1;
-            player.Attack += LevelUpAttackBonus;
-            player.MaxHp += LevelUpMaxHpBonus;
-            levelUpHpRecovery += LevelUpMaxHpBonus;
-            leveledUp = true;
-        }
-
-        if (leveledUp)
-        {
-            player.CurrentHp = Math.Min(player.MaxHp, player.CurrentHp + levelUpHpRecovery);
-        }
-
-        ClearCurrentEnemy(player);
-    }
-    else if (playerDefeated)
-    {
-        player.CurrentHp = DefeatSurvivalHp;
-        ClearCurrentEnemy(player);
-    }
-    else
-    {
-        player.CurrentHp = playerCurrentHp;
-        player.CurrentEnemyCurrentHp = enemyCurrentHp;
-    }
+    var settlementResult = ApplyFightRoundSettlement(
+        player,
+        enemy,
+        enemyCurrentHp,
+        playerCurrentHp,
+        enemyDefeated,
+        playerDefeated);
 
     player.UpdatedAt = DateTime.UtcNow;
 
     await dbContext.SaveChangesAsync();
 
-    var summary = enemyDefeated
-        ? $"{player.Name} defeated {enemy.Name} and earned {goldReward} gold, {expReward} EXP, 1 Food."
-            + (leveledUp ? $" Level up! Now Lv{player.Level}." : "")
-        : playerDefeated
-            ? $"{player.Name} was defeated by {enemy.Name}. Enemy was reset. HP is now {player.CurrentHp}/{player.MaxHp}. Use Food before continuing."
-            : $"{player.Name} used {string.Join(" -> ", playerActions.Select(action => action.ActionName))} and dealt {playerDamageDealt} total to {enemy.Name}. {enemy.Name} dealt {enemyDamageDealt}. Enemy HP: {enemyCurrentHp}/{enemy.MaxHp}.";
+    var summary = BuildFightSummary(
+        player,
+        enemy,
+        settlementResult,
+        playerActions,
+        playerDamageDealt,
+        enemyDamageDealt,
+        enemyCurrentHp);
 
     return Results.Ok(new FightResultDto(
         enemyDefeated,
-        goldReward,
-        expReward,
-        leveledUp,
+        settlementResult.GoldReward,
+        settlementResult.ExpReward,
+        settlementResult.LeveledUp,
         enemy.Name,
         enemy.MaxHp,
         enemy.Attack,
@@ -340,6 +305,105 @@ static void ClearCurrentEnemy(Player player)
 
 static int GetRequiredExpForNextLevel(int currentLevel) =>
     BaseExpPerLevel + (currentLevel - 1) * ExpPerLevelGrowth;
+
+static FightSettlementResult ApplyFightRoundSettlement(
+    Player player,
+    CurrentEnemyState enemy,
+    int enemyCurrentHp,
+    int playerCurrentHp,
+    bool enemyDefeated,
+    bool playerDefeated)
+{
+    if (enemyDefeated)
+    {
+        var enemyDefeatSettlementResult = ApplyEnemyDefeatSettlement(player, enemy, playerCurrentHp);
+        ClearCurrentEnemy(player);
+        return new FightSettlementResult(
+            FightSettlementBranch.EnemyDefeated,
+            enemyDefeatSettlementResult.GoldReward,
+            enemyDefeatSettlementResult.ExpReward,
+            enemyDefeatSettlementResult.LeveledUp);
+    }
+
+    if (playerDefeated)
+    {
+        player.CurrentHp = DefeatSurvivalHp;
+        ClearCurrentEnemy(player);
+        return new FightSettlementResult(
+            FightSettlementBranch.PlayerDefeated,
+            0,
+            0,
+            false);
+    }
+
+    player.CurrentHp = playerCurrentHp;
+    player.CurrentEnemyCurrentHp = enemyCurrentHp;
+    return new FightSettlementResult(
+        FightSettlementBranch.Ongoing,
+        0,
+        0,
+        false);
+}
+
+static EnemyDefeatSettlementResult ApplyEnemyDefeatSettlement(
+    Player player,
+    CurrentEnemyState enemy,
+    int playerCurrentHp)
+{
+    var goldReward = enemy.GoldReward;
+    var expReward = enemy.ExperienceReward;
+    player.Gold += goldReward;
+    player.Experience += expReward;
+    player.Food += 1;
+    player.CurrentHp = Math.Max(0, playerCurrentHp);
+
+    var levelUpHpRecovery = 0;
+    var leveledUp = false;
+    while (true)
+    {
+        var requiredExpForNextLevel = GetRequiredExpForNextLevel(player.Level);
+        if (player.Experience < requiredExpForNextLevel)
+        {
+            break;
+        }
+
+        player.Experience -= requiredExpForNextLevel;
+        player.Level += 1;
+        player.Attack += LevelUpAttackBonus;
+        player.MaxHp += LevelUpMaxHpBonus;
+        levelUpHpRecovery += LevelUpMaxHpBonus;
+        leveledUp = true;
+    }
+
+    if (leveledUp)
+    {
+        player.CurrentHp = Math.Min(player.MaxHp, player.CurrentHp + levelUpHpRecovery);
+    }
+
+    return new EnemyDefeatSettlementResult(
+        goldReward,
+        expReward,
+        leveledUp);
+}
+
+static string BuildFightSummary(
+    Player player,
+    CurrentEnemyState enemy,
+    FightSettlementResult settlementResult,
+    IReadOnlyList<PlayerActionResultDto> playerActions,
+    int playerDamageDealt,
+    int enemyDamageDealt,
+    int enemyCurrentHp) =>
+    settlementResult.Branch switch
+    {
+        FightSettlementBranch.EnemyDefeated =>
+            $"{player.Name} defeated {enemy.Name} and earned {settlementResult.GoldReward} gold, {settlementResult.ExpReward} EXP, 1 Food."
+            + (settlementResult.LeveledUp ? $" Level up! Now Lv{player.Level}." : ""),
+        FightSettlementBranch.PlayerDefeated =>
+            $"{player.Name} was defeated by {enemy.Name}. Enemy was reset. HP is now {player.CurrentHp}/{player.MaxHp}. Use Food before continuing.",
+        _ =>
+            $"{player.Name} used {string.Join(" -> ", playerActions.Select(action => action.ActionName))} and dealt {playerDamageDealt} total to {enemy.Name}. {enemy.Name} dealt {enemyDamageDealt}. Enemy HP: {enemyCurrentHp}/{enemy.MaxHp}."
+    };
 
 static void EnsurePlayerSchema(GameDbContext dbContext)
 {
@@ -682,6 +746,24 @@ file sealed record EnemyActionExecutionResult(
 file sealed record DamageSettlementResult(
     int DamageDealt,
     int TargetHpAfterDamage);
+
+file sealed record EnemyDefeatSettlementResult(
+    int GoldReward,
+    int ExpReward,
+    bool LeveledUp);
+
+file sealed record FightSettlementResult(
+    FightSettlementBranch Branch,
+    int GoldReward,
+    int ExpReward,
+    bool LeveledUp);
+
+file enum FightSettlementBranch
+{
+    EnemyDefeated,
+    PlayerDefeated,
+    Ongoing
+}
 
 file enum PlayerTurnActionType
 {
