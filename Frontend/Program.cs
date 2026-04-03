@@ -121,10 +121,10 @@ app.MapPost("/api/players/{id:int}/gold", async (IHttpClientFactory httpClientFa
         return await ForwardResponseAsContentAsync(response);
     }
 
-    var player = await response.Content.ReadFromJsonAsync<PlayerDto>();
-    return player is null
+    var useFoodResult = await response.Content.ReadFromJsonAsync<UseFoodResultDto>();
+    return useFoodResult is null
         ? Results.StatusCode(StatusCodes.Status502BadGateway)
-        : Results.Ok(player);
+        : Results.Ok(useFoodResult);
 });
 
 app.MapPost("/api/players/{id:int}/use-food", async (IHttpClientFactory httpClientFactory, int id) =>
