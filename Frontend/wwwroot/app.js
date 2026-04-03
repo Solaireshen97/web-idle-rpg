@@ -116,7 +116,7 @@ function formatShopPurchaseResultSummary(purchaseResult) {
   const currentGold = Number.isFinite(player?.gold) ? player.gold : "?";
   const currentExperience = Number.isFinite(player?.experience) ? player.experience : "?";
   const currentFood = Number.isFinite(player?.food) ? player.food : "?";
-  return `Buy ${displayName} success: Resource Delta ${formatChangedResourceDeltaText(resourceDelta.goldDelta, resourceDelta.experienceDelta, resourceDelta.foodDelta)}. Current Resources: Gold ${currentGold}, EXP ${currentExperience}, Food ${currentFood}.`;
+  return `Buy ${displayName} success: Resource Delta ${formatResourceDeltaText(resourceDelta.goldDelta, resourceDelta.experienceDelta, resourceDelta.foodDelta)}. Current Resources: Gold ${currentGold}, EXP ${currentExperience}, Food ${currentFood}.`;
 }
 
 function formatUseFoodResultSummary(useFoodResult, source) {
@@ -128,7 +128,7 @@ function formatUseFoodResultSummary(useFoodResult, source) {
   const recoveredHp = Number.isFinite(useFoodResult?.recoveredHp) ? useFoodResult.recoveredHp : 0;
   const currentHp = Number.isFinite(player?.currentHp) ? player.currentHp : "?";
   const maxHp = Number.isFinite(player?.maxHp) ? player.maxHp : "?";
-  return `${actionName}: Resource Delta ${formatChangedResourceDeltaText(resourceDelta.goldDelta, resourceDelta.experienceDelta, resourceDelta.foodDelta)}, recovered ${recoveredHp} HP. Current HP: ${currentHp}/${maxHp}.`;
+  return `${actionName}: Resource Delta ${formatResourceDeltaText(resourceDelta.goldDelta, resourceDelta.experienceDelta, resourceDelta.foodDelta)}, recovered ${recoveredHp} HP. Current HP: ${currentHp}/${maxHp}.`;
 }
 
 function syncShopItemsUi() {
@@ -317,10 +317,10 @@ function formatFightRewardText(fightResult) {
 
   const rewards = fightResult?.rewards ?? null;
   const resourceDelta = resolveFightRewardResourceDelta(fightResult, rewards);
-  return `Rewards: Resource Delta ${formatChangedResourceDeltaText(resourceDelta.goldDelta, resourceDelta.experienceDelta, resourceDelta.foodDelta)}`;
+  return `Rewards: Resource Delta ${formatResourceDeltaText(resourceDelta.goldDelta, resourceDelta.experienceDelta, resourceDelta.foodDelta)}`;
 }
 
-function getNumericValueWithFallback(primaryValue, fallbackValue) {
+function coalesceFiniteWithZeroDefault(primaryValue, fallbackValue) {
   if (Number.isFinite(primaryValue)) {
     return primaryValue;
   }
@@ -336,9 +336,9 @@ function resolveShopPurchaseResourceDelta(purchaseResult) {
   const resourcesDelta = purchaseResult?.resourcesDelta ?? null;
   const spentGold = Number.isFinite(purchaseResult?.spentGold) ? purchaseResult.spentGold : 0;
   return {
-    goldDelta: getNumericValueWithFallback(resourcesDelta?.goldDelta, -spentGold),
-    experienceDelta: getNumericValueWithFallback(resourcesDelta?.experienceDelta, 0),
-    foodDelta: getNumericValueWithFallback(resourcesDelta?.foodDelta, purchaseResult?.effect?.foodDelta)
+    goldDelta: coalesceFiniteWithZeroDefault(resourcesDelta?.goldDelta, -spentGold),
+    experienceDelta: coalesceFiniteWithZeroDefault(resourcesDelta?.experienceDelta, 0),
+    foodDelta: coalesceFiniteWithZeroDefault(resourcesDelta?.foodDelta, purchaseResult?.effect?.foodDelta)
   };
 }
 
@@ -346,21 +346,21 @@ function resolveUseFoodResourceDelta(useFoodResult) {
   const resourcesDelta = useFoodResult?.resourcesDelta ?? null;
   const consumedAmount = Number.isFinite(useFoodResult?.consumedAmount) ? useFoodResult.consumedAmount : 1;
   return {
-    goldDelta: getNumericValueWithFallback(resourcesDelta?.goldDelta, 0),
-    experienceDelta: getNumericValueWithFallback(resourcesDelta?.experienceDelta, 0),
-    foodDelta: getNumericValueWithFallback(resourcesDelta?.foodDelta, -consumedAmount)
+    goldDelta: coalesceFiniteWithZeroDefault(resourcesDelta?.goldDelta, 0),
+    experienceDelta: coalesceFiniteWithZeroDefault(resourcesDelta?.experienceDelta, 0),
+    foodDelta: coalesceFiniteWithZeroDefault(resourcesDelta?.foodDelta, -consumedAmount)
   };
 }
 
 function resolveFightRewardResourceDelta(fightResult, rewards) {
   const resourcesDelta = rewards?.resourcesDelta ?? null;
-  const goldReward = getNumericValueWithFallback(rewards?.gold, fightResult?.goldReward);
-  const experienceReward = getNumericValueWithFallback(rewards?.experience, fightResult?.experienceReward);
-  const foodReward = getNumericValueWithFallback(rewards?.food, 0);
+  const goldReward = coalesceFiniteWithZeroDefault(rewards?.gold, fightResult?.goldReward);
+  const experienceReward = coalesceFiniteWithZeroDefault(rewards?.experience, fightResult?.experienceReward);
+  const foodReward = coalesceFiniteWithZeroDefault(rewards?.food, 0);
   return {
-    goldDelta: getNumericValueWithFallback(resourcesDelta?.goldDelta, goldReward),
-    experienceDelta: getNumericValueWithFallback(resourcesDelta?.experienceDelta, experienceReward),
-    foodDelta: getNumericValueWithFallback(resourcesDelta?.foodDelta, foodReward)
+    goldDelta: coalesceFiniteWithZeroDefault(resourcesDelta?.goldDelta, goldReward),
+    experienceDelta: coalesceFiniteWithZeroDefault(resourcesDelta?.experienceDelta, experienceReward),
+    foodDelta: coalesceFiniteWithZeroDefault(resourcesDelta?.foodDelta, foodReward)
   };
 }
 
@@ -373,7 +373,7 @@ function formatSignedDelta(value) {
   return `${normalized}`;
 }
 
-function formatChangedResourceDeltaText(goldDelta, experienceDelta, foodDelta) {
+function formatResourceDeltaText(goldDelta, experienceDelta, foodDelta) {
   const entries = [];
   if (goldDelta !== 0) {
     entries.push(`Gold ${formatSignedDelta(goldDelta)}`);
