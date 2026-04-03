@@ -168,50 +168,29 @@ app.MapPost("/api/players/{id:int}/fight", async (GameDbContext dbContext, int i
     var playerMaxHp = Math.Max(1, player.MaxHp);
     var playerCurrentHp = Math.Min(playerMaxHp, Math.Max(0, player.CurrentHp));
     var enemyCurrentHp = Math.Max(0, enemy.CurrentHp);
-    var playerActions = new List<PlayerActionResultDto>();
     var powerStrikeCooldownAtTurnStart = Math.Max(0, player.PowerStrikeCooldownRemaining);
-    var shouldUsePowerStrike = player.PowerStrikeEnabled && powerStrikeCooldownAtTurnStart <= 0;
-
-    if (shouldUsePowerStrike)
-    {
-        var powerStrikeResult = ExecutePlayerPowerStrikeSkill(player, enemyCurrentHp);
-        playerActions.Add(ToPlayerActionResultDto(powerStrikeResult));
-        enemyCurrentHp = powerStrikeResult.EnemyHpAfterAction;
-    }
-
-    if (enemyCurrentHp > 0)
-    {
-        var basicAttackResult = ExecutePlayerBasicAttackSkill(player, enemyCurrentHp);
-        playerActions.Add(ToPlayerActionResultDto(basicAttackResult));
-        enemyCurrentHp = basicAttackResult.EnemyHpAfterAction;
-    }
+    var playerActionSequence = BuildPlayerTurnActionSequence(player, powerStrikeCooldownAtTurnStart);
+    var playerTurnResult = ExecutePlayerTurnActionSequence(player, playerActionSequence, enemyCurrentHp);
+    var playerActions = playerTurnResult.Actions;
+    enemyCurrentHp = playerTurnResult.EnemyHpAfterTurn;
+    var shouldUsePowerStrike = playerActionSequence.Contains(PlayerTurnActionType.PowerStrike);
 
     player.PowerStrikeCooldownRemaining = shouldUsePowerStrike
         ? Math.Max(0, PowerStrikeCooldownTurns - 1)
         : Math.Max(0, powerStrikeCooldownAtTurnStart - 1);
 
-    var playerDamageDealt = playerActions.Sum(action => action.DamageDealt);
+    var playerDamageDealt = playerTurnResult.TotalDamageDealt;
     var enemyDefeated = enemyCurrentHp <= 0;
 
     var enemyActions = new List<EnemyActionResultDto>();
     var enemyDamageDealt = 0;
     if (!enemyDefeated)
     {
-        if (ShouldTriggerEnemyExtraAction(enemy, enemyCurrentHp))
-        {
-            var enemyExtraActionResult = ExecuteEnemyExtraAction(enemy, playerCurrentHp);
-            enemyActions.Add(ToEnemyActionResultDto(enemyExtraActionResult));
-            playerCurrentHp = enemyExtraActionResult.PlayerHpAfterAction;
-        }
-
-        if (playerCurrentHp > 0)
-        {
-            var enemyAttackActionResult = ExecuteEnemyAttackAction(enemy, playerCurrentHp);
-            enemyActions.Add(ToEnemyActionResultDto(enemyAttackActionResult));
-            playerCurrentHp = enemyAttackActionResult.PlayerHpAfterAction;
-        }
-
-        enemyDamageDealt = enemyActions.Sum(action => action.DamageDealt);
+        var enemyActionSequence = BuildEnemyTurnActionSequence(enemy, enemyCurrentHp);
+        var enemyTurnResult = ExecuteEnemyTurnActionSequence(enemy, enemyActionSequence, playerCurrentHp);
+        enemyActions = enemyTurnResult.Actions;
+        playerCurrentHp = enemyTurnResult.PlayerHpAfterTurn;
+        enemyDamageDealt = enemyTurnResult.TotalDamageDealt;
     }
 
     var playerDefeated = playerCurrentHp <= 0;
@@ -494,6 +473,93 @@ static EnemyTemplate GetEnemyTemplateForNewFight(
         : enemyTemplates[Random.Shared.Next(enemyTemplates.Length)];
 }
 
+static List<PlayerTurnActionType> BuildPlayerTurnActionSequence(Player player, int powerStrikeCooldownAtTurnStart)
+{
+    var actionSequence = new List<PlayerTurnActionType>();
+    var shouldUsePowerStrike = player.PowerStrikeEnabled && powerStrikeCooldownAtTurnStart <= 0;
+    if (shouldUsePowerStrike)
+    {
+        actionSequence.Add(PlayerTurnActionType.PowerStrike);
+    }
+
+    actionSequence.Add(PlayerTurnActionType.BasicAttack);
+    return actionSequence;
+}
+
+static PlayerTurnExecutionResult ExecutePlayerTurnActionSequence(
+    Player player,
+    IReadOnlyList<PlayerTurnActionType> actionSequence,
+    int enemyCurrentHp)
+{
+    var normalizedEnemyCurrentHp = Math.Max(0, enemyCurrentHp);
+    var actions = new List<PlayerActionResultDto>();
+    foreach (var actionType in actionSequence)
+    {
+        if (normalizedEnemyCurrentHp <= 0)
+        {
+            break;
+        }
+
+        var actionExecutionResult = actionType switch
+        {
+            PlayerTurnActionType.PowerStrike => ExecutePlayerPowerStrikeSkill(player, normalizedEnemyCurrentHp),
+            PlayerTurnActionType.BasicAttack => ExecutePlayerBasicAttackSkill(player, normalizedEnemyCurrentHp),
+            _ => throw new InvalidOperationException($"Unsupported player turn action type '{actionType}'.")
+        };
+
+        actions.Add(ToPlayerActionResultDto(actionExecutionResult));
+        normalizedEnemyCurrentHp = actionExecutionResult.EnemyHpAfterAction;
+    }
+
+    return new PlayerTurnExecutionResult(
+        actions,
+        normalizedEnemyCurrentHp,
+        actions.Sum(action => action.DamageDealt));
+}
+
+static List<EnemyTurnActionType> BuildEnemyTurnActionSequence(CurrentEnemyState enemy, int enemyCurrentHp)
+{
+    var actionSequence = new List<EnemyTurnActionType>();
+    if (ShouldTriggerEnemyExtraAction(enemy, enemyCurrentHp))
+    {
+        actionSequence.Add(EnemyTurnActionType.EnemyJab);
+    }
+
+    actionSequence.Add(EnemyTurnActionType.EnemyAttack);
+    return actionSequence;
+}
+
+static EnemyTurnExecutionResult ExecuteEnemyTurnActionSequence(
+    CurrentEnemyState enemy,
+    IReadOnlyList<EnemyTurnActionType> actionSequence,
+    int playerCurrentHp)
+{
+    var normalizedPlayerCurrentHp = Math.Max(0, playerCurrentHp);
+    var actions = new List<EnemyActionResultDto>();
+    foreach (var actionType in actionSequence)
+    {
+        if (normalizedPlayerCurrentHp <= 0)
+        {
+            break;
+        }
+
+        var actionExecutionResult = actionType switch
+        {
+            EnemyTurnActionType.EnemyJab => ExecuteEnemyExtraAction(enemy, normalizedPlayerCurrentHp),
+            EnemyTurnActionType.EnemyAttack => ExecuteEnemyAttackAction(enemy, normalizedPlayerCurrentHp),
+            _ => throw new InvalidOperationException($"Unsupported enemy turn action type '{actionType}'.")
+        };
+
+        actions.Add(ToEnemyActionResultDto(actionExecutionResult));
+        normalizedPlayerCurrentHp = actionExecutionResult.PlayerHpAfterAction;
+    }
+
+    return new EnemyTurnExecutionResult(
+        actions,
+        normalizedPlayerCurrentHp,
+        actions.Sum(action => action.DamageDealt));
+}
+
 static PlayerSkillExecutionResult ExecutePlayerBasicAttackSkill(Player player, int enemyCurrentHp)
 {
     var normalizedEnemyCurrentHp = Math.Max(0, enemyCurrentHp);
@@ -591,3 +657,25 @@ file sealed record EnemyActionExecutionResult(
     string ActionName,
     int DamageDealt,
     int PlayerHpAfterAction);
+
+file enum PlayerTurnActionType
+{
+    PowerStrike,
+    BasicAttack
+}
+
+file enum EnemyTurnActionType
+{
+    EnemyJab,
+    EnemyAttack
+}
+
+file sealed record PlayerTurnExecutionResult(
+    List<PlayerActionResultDto> Actions,
+    int EnemyHpAfterTurn,
+    int TotalDamageDealt);
+
+file sealed record EnemyTurnExecutionResult(
+    List<EnemyActionResultDto> Actions,
+    int PlayerHpAfterTurn,
+    int TotalDamageDealt);
