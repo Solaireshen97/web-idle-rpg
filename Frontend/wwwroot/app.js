@@ -107,35 +107,16 @@ function getShopItemEffectText(shopItem) {
   return `+${foodDelta} Food`;
 }
 
-function formatShopItemPurchaseSummary(shopItem, player) {
-  const goldPrice = Number.isFinite(shopItem?.goldPrice) ? shopItem.goldPrice : 0;
-  const foodDelta = Number.isFinite(shopItem?.effect?.foodDelta) ? shopItem.effect.foodDelta : 0;
-  const displayName = typeof shopItem?.displayName === "string" && shopItem.displayName.trim().length > 0
-    ? shopItem.displayName.trim()
-    : "item";
-  return `Buy ${displayName} success: Spent ${goldPrice} Gold, gained ${foodDelta} Food. Remaining Gold: ${player.gold}, Current Food: ${player.food}.`;
-}
-
-function normalizeShopPurchaseResult(rawResult) {
-  const player = rawResult?.player ?? null;
-  return {
-    itemKey: typeof rawResult?.itemKey === "string" ? rawResult.itemKey : "",
-    displayName: typeof rawResult?.displayName === "string" && rawResult.displayName.trim().length > 0
-      ? rawResult.displayName.trim()
-      : "item",
-    spentGold: Number.isFinite(rawResult?.spentGold) ? rawResult.spentGold : 0,
-    effect: {
-      foodDelta: Number.isFinite(rawResult?.effect?.foodDelta) ? rawResult.effect.foodDelta : 0
-    },
-    player
-  };
-}
-
 function formatShopPurchaseResultSummary(purchaseResult) {
   const player = purchaseResult?.player ?? null;
+  const displayName = typeof purchaseResult?.displayName === "string" && purchaseResult.displayName.trim().length > 0
+    ? purchaseResult.displayName.trim()
+    : "item";
+  const spentGold = Number.isFinite(purchaseResult?.spentGold) ? purchaseResult.spentGold : 0;
+  const foodDelta = Number.isFinite(purchaseResult?.effect?.foodDelta) ? purchaseResult.effect.foodDelta : 0;
   const currentGold = Number.isFinite(player?.gold) ? player.gold : "?";
   const currentFood = Number.isFinite(player?.food) ? player.food : "?";
-  return `Buy ${purchaseResult.displayName} success: Spent ${purchaseResult.spentGold} Gold, gained ${purchaseResult.effect.foodDelta} Food. Remaining Gold: ${currentGold}, Current Food: ${currentFood}.`;
+  return `Buy ${displayName} success: Spent ${spentGold} Gold, gained ${foodDelta} Food. Remaining Gold: ${currentGold}, Current Food: ${currentFood}.`;
 }
 
 function syncShopItemsUi() {
@@ -463,8 +444,7 @@ async function buyShopItem(itemKey) {
     return;
   }
 
-  const rawPurchaseResult = JSON.parse(text);
-  const purchaseResult = normalizeShopPurchaseResult(rawPurchaseResult);
+  const purchaseResult = JSON.parse(text);
   const player = purchaseResult.player;
   if (player) {
     showPlayerStatus(player);
@@ -475,7 +455,7 @@ async function buyShopItem(itemKey) {
   }
 
   writeLastResultMessages([formatShopPurchaseResultSummary(purchaseResult)]);
-  showResult(rawPurchaseResult);
+  showResult(purchaseResult);
 }
 
 async function setPreferredEnemy() {
