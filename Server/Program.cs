@@ -551,22 +551,58 @@ static async Task<IResult> BuyShopItemAsync(
         return Results.NotFound(new { message = "Player not found." });
     }
 
-    if (string.IsNullOrWhiteSpace(itemKey) || !shopItemByKey.TryGetValue(itemKey, out var item))
+    if (!TryGetShopItemDefinition(shopItemByKey, itemKey, out var item))
     {
         return Results.NotFound(new { message = "Shop item not found." });
     }
 
-    if (player.Gold < item.GoldPrice)
+    if (!CanAffordShopItem(player, item, out var insufficientGoldMessage))
     {
-        return Results.BadRequest(new { message = $"Not enough gold. Need {item.GoldPrice} gold to buy {item.DisplayName}." });
+        return Results.BadRequest(new { message = insufficientGoldMessage });
     }
 
-    player.Gold -= item.GoldPrice;
-    player.Food += item.Effect.FoodDelta;
-    player.UpdatedAt = DateTime.UtcNow;
+    ApplyShopPurchase(player, item);
 
     await dbContext.SaveChangesAsync();
     return Results.Ok(ToPlayerDto(player));
+}
+
+static bool TryGetShopItemDefinition(
+    IReadOnlyDictionary<string, ShopItemDefinitionDto> shopItemByKey,
+    string itemKey,
+    out ShopItemDefinitionDto item)
+{
+    if (string.IsNullOrWhiteSpace(itemKey))
+    {
+        item = default!;
+        return false;
+    }
+
+    return shopItemByKey.TryGetValue(itemKey, out item!);
+}
+
+static bool CanAffordShopItem(Player player, ShopItemDefinitionDto item, out string message)
+{
+    if (player.Gold >= item.GoldPrice)
+    {
+        message = string.Empty;
+        return true;
+    }
+
+    message = $"Not enough gold. Need {item.GoldPrice} gold to buy {item.DisplayName}.";
+    return false;
+}
+
+static void ApplyShopPurchase(Player player, ShopItemDefinitionDto item)
+{
+    player.Gold -= item.GoldPrice;
+    ApplyShopItemEffect(player, item.Effect);
+    player.UpdatedAt = DateTime.UtcNow;
+}
+
+static void ApplyShopItemEffect(Player player, ShopItemEffectDto effect)
+{
+    player.Food += effect.FoodDelta;
 }
 
 static bool TryGetPreferredEnemyKey(string? preferredEnemyKey, out string normalizedKey)

@@ -107,13 +107,22 @@ function getShopItemEffectText(shopItem) {
   return `+${foodDelta} Food`;
 }
 
+function formatShopItemPurchaseSummary(shopItem, player) {
+  const goldPrice = Number.isFinite(shopItem?.goldPrice) ? shopItem.goldPrice : 0;
+  const foodDelta = Number.isFinite(shopItem?.effect?.foodDelta) ? shopItem.effect.foodDelta : 0;
+  const displayName = typeof shopItem?.displayName === "string" && shopItem.displayName.trim().length > 0
+    ? shopItem.displayName.trim()
+    : "item";
+  return `Buy ${displayName} success: Spent ${goldPrice} Gold, gained ${foodDelta} Food. Remaining Gold: ${player.gold}, Current Food: ${player.food}.`;
+}
+
 function syncShopItemsUi() {
   const rows = currentShopItems.map(item =>
     `<div>${item.displayName} | ${item.goldPrice} Gold | ${getShopItemEffectText(item)} <button type="button" data-shop-item-key="${item.itemKey}">Buy</button></div>`);
   shopItemsContainerElement.innerHTML = rows.length > 0 ? rows.join("") : "No shop items.";
 }
 
-function normalizeFoodShopItem(rawItem) {
+function normalizeShopItem(rawItem) {
   const itemKey = typeof rawItem?.itemKey === "string" && rawItem.itemKey.trim().length > 0
     ? rawItem.itemKey.trim().toLowerCase()
     : defaultShopItem.itemKey;
@@ -146,7 +155,7 @@ async function loadShopItems() {
   const text = await response.text();
   const items = JSON.parse(text);
   const normalizedItems = Array.isArray(items)
-    ? items.map(normalizeFoodShopItem)
+    ? items.map(normalizeShopItem)
     : [];
   currentShopItems = normalizedItems.length > 0 ? normalizedItems : [...defaultShopItems];
   syncShopItemsUi();
@@ -417,7 +426,7 @@ async function buyShopItem(itemKey) {
 
   const text = await response.text();
   if (!response.ok) {
-    let message = `Buy item failed (${response.status}).`;
+    let message = "Buy item failed.";
     try {
       const errorPayload = JSON.parse(text);
       if (errorPayload?.message) {
@@ -437,9 +446,7 @@ async function buyShopItem(itemKey) {
   showCurrentEnemy(player);
   const boughtItem = currentShopItems.find(item => item.itemKey === itemKey) ?? null;
   if (boughtItem) {
-    writeLastResultMessages([
-      `Buy ${boughtItem.displayName} success: Spent ${boughtItem.goldPrice} Gold, gained ${boughtItem.effect.foodDelta} ${boughtItem.displayName}. Remaining Gold: ${player.gold}, Current Food: ${player.food}.`
-    ]);
+    writeLastResultMessages([formatShopItemPurchaseSummary(boughtItem, player)]);
   } else {
     writeLastResultMessages([
       `Buy item success: ${itemKey}. Remaining Gold: ${player.gold}, Current Food: ${player.food}.`
