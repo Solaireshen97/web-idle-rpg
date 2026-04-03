@@ -5,6 +5,7 @@ using Shared.Players;
 
 const int GoldIncrementAmount = 10;
 const int FoodHealAmount = 10;
+const int FoodPurchaseGoldCost = 5;
 const int BaseExpPerLevel = 10;
 const int ExpPerLevelGrowth = 5;
 const int LevelUpAttackBonus = 1;
@@ -107,6 +108,27 @@ app.MapPost("/api/players/{id:int}/use-food", async (GameDbContext dbContext, in
 
     player.Food -= 1;
     player.CurrentHp = Math.Min(player.MaxHp, player.CurrentHp + FoodHealAmount);
+    player.UpdatedAt = DateTime.UtcNow;
+
+    await dbContext.SaveChangesAsync();
+    return Results.Ok(ToPlayerDto(player));
+});
+
+app.MapPost("/api/players/{id:int}/buy-food", async (GameDbContext dbContext, int id) =>
+{
+    var player = await dbContext.Players.FindAsync(id);
+    if (player is null)
+    {
+        return Results.NotFound(new { message = "Player not found." });
+    }
+
+    if (player.Gold < FoodPurchaseGoldCost)
+    {
+        return Results.BadRequest(new { message = $"Not enough gold. Need {FoodPurchaseGoldCost} gold to buy 1 Food." });
+    }
+
+    player.Gold -= FoodPurchaseGoldCost;
+    player.Food += 1;
     player.UpdatedAt = DateTime.UtcNow;
 
     await dbContext.SaveChangesAsync();

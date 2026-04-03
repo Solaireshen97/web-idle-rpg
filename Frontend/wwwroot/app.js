@@ -350,6 +350,38 @@ async function useFood(options = {}) {
   };
 }
 
+async function buyFood() {
+  const id = playerIdInput.value;
+  const response = await fetch(`/api/players/${encodeURIComponent(id)}/buy-food`, {
+    method: "POST"
+  });
+
+  const text = await response.text();
+  if (!response.ok) {
+    let message = `Buy Food failed (${response.status}).`;
+    try {
+      const errorPayload = JSON.parse(text);
+      if (errorPayload?.message) {
+        message = errorPayload.message;
+      }
+    } catch {
+      // keep fallback message
+    }
+
+    writeLastResultMessages([`Buy Food failed: ${message}`]);
+    showResult({ error: `Buy food failed (${response.status})`, detail: text });
+    return;
+  }
+
+  const player = JSON.parse(text);
+  showPlayerStatus(player);
+  showCurrentEnemy(player);
+  writeLastResultMessages([
+    `Buy Food success: Spent 5 Gold, gained 1 Food. Remaining Gold: ${player.gold}, Current Food: ${player.food}.`
+  ]);
+  showResult(player);
+}
+
 async function setPreferredEnemy() {
   const id = playerIdInput.value;
   const previousPreferredEnemyKey = currentPreferredEnemyKey;
@@ -515,6 +547,7 @@ document.getElementById("createPlayerButton").addEventListener("click", createPl
 document.getElementById("addGoldButton").addEventListener("click", addGold);
 document.getElementById("fightButton").addEventListener("click", fight);
 document.getElementById("useFoodButton").addEventListener("click", useFood);
+document.getElementById("buyFoodButton").addEventListener("click", buyFood);
 startAutoFightButton.addEventListener("click", startAutoFight);
 stopAutoFightButton.addEventListener("click", stopAutoFight);
 autoUseFoodCheckbox.addEventListener("change", setAutoUseFoodStatus);
