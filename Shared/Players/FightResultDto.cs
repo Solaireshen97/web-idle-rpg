@@ -10,7 +10,6 @@ public sealed record FightResultDto(
     int EnemyAttack,
     IReadOnlyList<PlayerActionResultDto> PlayerActions,
     IReadOnlyList<EnemyActionResultDto> EnemyActions,
-    string? EnemyActionName,
     int EnemyCurrentHp,
     int PlayerDamageDealt,
     int EnemyDamageDealt,

@@ -194,7 +194,6 @@ app.MapPost("/api/players/{id:int}/fight", async (GameDbContext dbContext, int i
     var enemyDefeated = enemyCurrentHp <= 0;
 
     var enemyActions = new List<EnemyActionResultDto>();
-    string? enemyActionName = null;
     var enemyDamageDealt = 0;
     if (!enemyDefeated)
     {
@@ -209,9 +208,6 @@ app.MapPost("/api/players/{id:int}/fight", async (GameDbContext dbContext, int i
             playerCurrentHp = enemyAttackActionResult.PlayerHpAfterAction;
         }
 
-        enemyActionName = enemyActions.Count > 0
-            ? string.Join(" -> ", enemyActions.Select(action => action.ActionName))
-            : null;
         enemyDamageDealt = enemyActions.Sum(action => action.DamageDealt);
     }
 
@@ -282,7 +278,6 @@ app.MapPost("/api/players/{id:int}/fight", async (GameDbContext dbContext, int i
         enemy.Attack,
         playerActions,
         enemyActions,
-        enemyActionName,
         Math.Max(0, enemyCurrentHp),
         playerDamageDealt,
         enemyDamageDealt,

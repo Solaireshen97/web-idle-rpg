@@ -216,7 +216,7 @@ function buildFightMessage(fightResult) {
   const enemyActions = Array.isArray(fightResult.enemyActions) ? fightResult.enemyActions : [];
   const actionOrderText = formatPlayerActionOrder(playerActions);
   const actionDamageText = formatPlayerActionDamage(playerActions, fightResult.playerDamageDealt);
-  const enemyActionOrderText = formatEnemyActionOrder(enemyActions, fightResult.enemyActionName);
+  const enemyActionOrderText = formatEnemyActionOrder(enemyActions);
   const enemyActionDamageText = formatEnemyActionDamage(enemyActions, fightResult.enemyDamageDealt);
   const enemyText = `Enemy: ${fightResult.enemyName} (ATK ${fightResult.enemyAttack})`;
   const enemyHpText = `Enemy HP: ${fightResult.enemyCurrentHp}/${fightResult.enemyMaxHp}`;
@@ -245,16 +245,12 @@ function formatPlayerActionDamage(playerActions, fallbackDamage) {
   return playerActions.map(action => `${action.actionName}:${action.damageDealt}`).join(", ");
 }
 
-function formatEnemyActionOrder(enemyActions, fallbackEnemyActionName) {
+function formatEnemyActionOrder(enemyActions) {
   if (enemyActions.length > 0) {
     return enemyActions.map(action => action.actionName).join(" -> ");
   }
 
-  if (typeof fallbackEnemyActionName !== "string" || fallbackEnemyActionName.trim().length === 0) {
-    return "Skipped";
-  }
-
-  return fallbackEnemyActionName;
+  return "Skipped";
 }
 
 function formatEnemyActionDamage(enemyActions, fallbackEnemyDamage) {
