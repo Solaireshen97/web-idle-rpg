@@ -205,10 +205,10 @@ app.MapPost("/api/players/{id:int}/preferred-enemy", async (IHttpClientFactory h
         return await ForwardResponseAsContentAsync(response);
     }
 
-    var useFoodResult = await response.Content.ReadFromJsonAsync<UseFoodResultDto>();
-    return useFoodResult is null
+    var player = await response.Content.ReadFromJsonAsync<PlayerDto>();
+    return player is null
         ? Results.StatusCode(StatusCodes.Status502BadGateway)
-        : Results.Ok(useFoodResult);
+        : Results.Ok(player);
 });
 
 app.MapPost("/api/players/{id:int}/power-strike", async (IHttpClientFactory httpClientFactory, int id, SetPowerStrikeRequest request) =>
