@@ -304,12 +304,22 @@ function buildFightMessage(fightResult) {
   const enemyText = `Enemy: ${fightResult.enemyName} (ATK ${fightResult.enemyAttack})`;
   const enemyHpText = `Enemy HP: ${fightResult.enemyCurrentHp}/${fightResult.enemyMaxHp}`;
   const roundDamageText = `Round Damage -> You: ${fightResult.playerDamageDealt}, Enemy: ${fightResult.enemyDamageDealt} | Enemy Turn: ${enemyActionOrderText} | Enemy Action Damage: ${enemyActionDamageText}`;
-  const rewardText = fightResult.enemyDefeated
-    ? `Rewards: Gold +${fightResult.goldReward}, EXP +${fightResult.experienceReward}`
-    : "Rewards: none";
+  const rewardText = formatFightRewardText(fightResult);
   const levelText = fightResult.leveledUp ? ` | LEVEL UP! Lv${fightResult.player.level}` : "";
   const resultText = `Status: ${statusText} | Player Turn: ${actionOrderText} | Action Damage: ${actionDamageText} | ${enemyHpText} | ${roundDamageText} | ${rewardText}${levelText} | Player HP: ${fightResult.player.currentHp}/${fightResult.player.maxHp}`;
   return `${enemyText} | ${resultText} | ${fightResult.summary}`;
+}
+
+function formatFightRewardText(fightResult) {
+  if (!fightResult?.enemyDefeated) {
+    return "Rewards: none";
+  }
+
+  const rewards = fightResult?.rewards ?? null;
+  const goldReward = Number.isFinite(rewards?.gold) ? rewards.gold : (Number.isFinite(fightResult?.goldReward) ? fightResult.goldReward : 0);
+  const experienceReward = Number.isFinite(rewards?.experience) ? rewards.experience : (Number.isFinite(fightResult?.experienceReward) ? fightResult.experienceReward : 0);
+  const foodReward = Number.isFinite(rewards?.food) ? rewards.food : 0;
+  return `Rewards: Gold +${goldReward}, EXP +${experienceReward}, Food +${foodReward}`;
 }
 
 function formatPlayerActionOrder(playerActions) {

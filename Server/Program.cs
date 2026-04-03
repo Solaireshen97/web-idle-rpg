@@ -260,6 +260,10 @@ app.MapPost("/api/players/{id:int}/fight", async (GameDbContext dbContext, int i
         enemyDefeated,
         settlementResult.GoldReward,
         settlementResult.ExpReward,
+        new FightRewardResultDto(
+            settlementResult.GoldReward,
+            settlementResult.ExpReward,
+            settlementResult.FoodReward),
         settlementResult.LeveledUp,
         enemy.Name,
         enemy.MaxHp,
@@ -363,6 +367,7 @@ static FightSettlementResult ApplyFightRoundSettlement(
             FightSettlementBranch.EnemyDefeated,
             enemyDefeatSettlementResult.GoldReward,
             enemyDefeatSettlementResult.ExpReward,
+            enemyDefeatSettlementResult.FoodReward,
             enemyDefeatSettlementResult.LeveledUp);
     }
 
@@ -374,6 +379,7 @@ static FightSettlementResult ApplyFightRoundSettlement(
             FightSettlementBranch.PlayerDefeated,
             0,
             0,
+            0,
             false);
     }
 
@@ -381,6 +387,7 @@ static FightSettlementResult ApplyFightRoundSettlement(
     player.CurrentEnemyCurrentHp = enemyCurrentHp;
     return new FightSettlementResult(
         FightSettlementBranch.Ongoing,
+        0,
         0,
         0,
         false);
@@ -424,6 +431,7 @@ static EnemyDefeatSettlementResult ApplyEnemyDefeatSettlement(
     return new EnemyDefeatSettlementResult(
         goldReward,
         expReward,
+        1,
         leveledUp);
 }
 
@@ -438,7 +446,7 @@ static string BuildFightSummary(
     settlementResult.Branch switch
     {
         FightSettlementBranch.EnemyDefeated =>
-            $"{player.Name} defeated {enemy.Name} and earned {settlementResult.GoldReward} gold, {settlementResult.ExpReward} EXP, 1 Food."
+            $"{player.Name} defeated {enemy.Name} and earned {settlementResult.GoldReward} gold, {settlementResult.ExpReward} EXP, {settlementResult.FoodReward} Food."
             + (settlementResult.LeveledUp ? $" Level up! Now Lv{player.Level}." : ""),
         FightSettlementBranch.PlayerDefeated =>
             $"{player.Name} was defeated by {enemy.Name}. Enemy was reset. HP is now {player.CurrentHp}/{player.MaxHp}. Use Food before continuing.",
@@ -862,12 +870,14 @@ file sealed record DamageSettlementResult(
 file sealed record EnemyDefeatSettlementResult(
     int GoldReward,
     int ExpReward,
+    int FoodReward,
     bool LeveledUp);
 
 file sealed record FightSettlementResult(
     FightSettlementBranch Branch,
     int GoldReward,
     int ExpReward,
+    int FoodReward,
     bool LeveledUp);
 
 file enum FightSettlementBranch
