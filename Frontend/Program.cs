@@ -64,6 +64,27 @@ app.MapGet("/api/players/{id:int}", async (IHttpClientFactory httpClientFactory,
         : Results.Ok(player);
 });
 
+app.MapGet("/api/shop/items", async (IHttpClientFactory httpClientFactory) =>
+{
+    var serverApi = httpClientFactory.CreateClient("ServerApi");
+    var response = await serverApi.GetAsync("/api/shop/items");
+
+    if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+    {
+        return Results.NotFound();
+    }
+
+    if (!response.IsSuccessStatusCode)
+    {
+        return await ForwardResponseAsContentAsync(response);
+    }
+
+    var items = await response.Content.ReadFromJsonAsync<ShopItemDefinitionDto[]>();
+    return items is null
+        ? Results.StatusCode(StatusCodes.Status502BadGateway)
+        : Results.Ok(items);
+});
+
 app.MapGet("/api/shop/items/food", async (IHttpClientFactory httpClientFactory) =>
 {
     var serverApi = httpClientFactory.CreateClient("ServerApi");
@@ -131,6 +152,27 @@ app.MapPost("/api/players/{id:int}/buy-food", async (IHttpClientFactory httpClie
 {
     var serverApi = httpClientFactory.CreateClient("ServerApi");
     var response = await serverApi.PostAsync($"/api/players/{id}/buy-food", content: null);
+
+    if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+    {
+        return Results.NotFound();
+    }
+
+    if (!response.IsSuccessStatusCode)
+    {
+        return await ForwardResponseAsContentAsync(response);
+    }
+
+    var player = await response.Content.ReadFromJsonAsync<PlayerDto>();
+    return player is null
+        ? Results.StatusCode(StatusCodes.Status502BadGateway)
+        : Results.Ok(player);
+});
+
+app.MapPost("/api/players/{id:int}/buy-item/{itemKey}", async (IHttpClientFactory httpClientFactory, int id, string itemKey) =>
+{
+    var serverApi = httpClientFactory.CreateClient("ServerApi");
+    var response = await serverApi.PostAsync($"/api/players/{id}/buy-item/{Uri.EscapeDataString(itemKey)}", content: null);
 
     if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
     {

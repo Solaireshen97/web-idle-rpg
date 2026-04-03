@@ -31,11 +31,25 @@ var enemyTemplateByKey = new Dictionary<string, EnemyTemplate>(StringComparer.Or
 };
 
 var enemyTemplates = enemyTemplateByKey.Values.ToArray();
-var foodShopItem = new ShopItemDefinitionDto(
-    ItemKey: "food",
-    DisplayName: "Food",
-    GoldPrice: 5,
-    Effect: new ShopItemEffectDto(FoodDelta: 1));
+var shopItems = new[]
+{
+    new ShopItemDefinitionDto(
+        ItemKey: "food",
+        DisplayName: "Food",
+        GoldPrice: 5,
+        Effect: new ShopItemEffectDto(FoodDelta: 1)),
+    new ShopItemDefinitionDto(
+        ItemKey: "food-pack",
+        DisplayName: "Food Pack",
+        GoldPrice: 12,
+        Effect: new ShopItemEffectDto(FoodDelta: 3)),
+    new ShopItemDefinitionDto(
+        ItemKey: "food-crate",
+        DisplayName: "Food Crate",
+        GoldPrice: 18,
+        Effect: new ShopItemEffectDto(FoodDelta: 5))
+};
+var shopItemByKey = shopItems.ToDictionary(item => item.ItemKey, StringComparer.OrdinalIgnoreCase);
 
 var builder = WebApplication.CreateBuilder(args);
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection")
@@ -57,7 +71,8 @@ using (var scope = app.Services.CreateScope())
 
 app.MapGet("/api/ping", () => Results.Ok(new { message = "pong" }));
 
-app.MapGet("/api/shop/items/food", () => Results.Ok(foodShopItem));
+app.MapGet("/api/shop/items", () => Results.Ok(shopItems));
+app.MapGet("/api/shop/items/food", () => Results.Ok(shopItemByKey["food"]));
 
 app.MapPost("/api/players", async (GameDbContext dbContext, CreatePlayerRequest request) =>
 {
@@ -123,23 +138,12 @@ app.MapPost("/api/players/{id:int}/use-food", async (GameDbContext dbContext, in
 
 app.MapPost("/api/players/{id:int}/buy-food", async (GameDbContext dbContext, int id) =>
 {
-    var player = await dbContext.Players.FindAsync(id);
-    if (player is null)
-    {
-        return Results.NotFound(new { message = "Player not found." });
-    }
+    return await BuyShopItemAsync(dbContext, id, "food", shopItemByKey);
+});
 
-    if (player.Gold < foodShopItem.GoldPrice)
-    {
-        return Results.BadRequest(new { message = $"Not enough gold. Need {foodShopItem.GoldPrice} gold to buy 1 {foodShopItem.DisplayName}." });
-    }
-
-    player.Gold -= foodShopItem.GoldPrice;
-    player.Food += foodShopItem.Effect.FoodDelta;
-    player.UpdatedAt = DateTime.UtcNow;
-
-    await dbContext.SaveChangesAsync();
-    return Results.Ok(ToPlayerDto(player));
+app.MapPost("/api/players/{id:int}/buy-item/{itemKey}", async (GameDbContext dbContext, int id, string itemKey) =>
+{
+    return await BuyShopItemAsync(dbContext, id, itemKey, shopItemByKey);
 });
 
 app.MapPost("/api/players/{id:int}/preferred-enemy", async (GameDbContext dbContext, int id, SetPreferredEnemyRequest request) =>
@@ -533,6 +537,36 @@ static string NormalizePreferredEnemyKey(string? preferredEnemyKey)
     return TryGetPreferredEnemyKey(preferredEnemyKey, out var normalizedKey)
         ? normalizedKey
         : PreferredEnemyRandomKey;
+}
+
+static async Task<IResult> BuyShopItemAsync(
+    GameDbContext dbContext,
+    int playerId,
+    string itemKey,
+    IReadOnlyDictionary<string, ShopItemDefinitionDto> shopItemByKey)
+{
+    var player = await dbContext.Players.FindAsync(playerId);
+    if (player is null)
+    {
+        return Results.NotFound(new { message = "Player not found." });
+    }
+
+    if (string.IsNullOrWhiteSpace(itemKey) || !shopItemByKey.TryGetValue(itemKey, out var item))
+    {
+        return Results.NotFound(new { message = "Shop item not found." });
+    }
+
+    if (player.Gold < item.GoldPrice)
+    {
+        return Results.BadRequest(new { message = $"Not enough gold. Need {item.GoldPrice} gold to buy {item.DisplayName}." });
+    }
+
+    player.Gold -= item.GoldPrice;
+    player.Food += item.Effect.FoodDelta;
+    player.UpdatedAt = DateTime.UtcNow;
+
+    await dbContext.SaveChangesAsync();
+    return Results.Ok(ToPlayerDto(player));
 }
 
 static bool TryGetPreferredEnemyKey(string? preferredEnemyKey, out string normalizedKey)

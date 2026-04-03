@@ -27,21 +27,23 @@ const powerStrikeCheckbox = document.getElementById("powerStrikeCheckbox");
 const powerStrikeStatusElement = document.getElementById("powerStrikeStatus");
 const preferredEnemySelect = document.getElementById("preferredEnemySelect");
 const preferredEnemyStatusElement = document.getElementById("preferredEnemyStatus");
+const shopItemsContainerElement = document.getElementById("shopItemsContainer");
 const defaultAutoUseFoodThresholdPercent = 50;
 const defaultPreferredEnemyKey = "random";
 const defaultPowerStrikeEnabled = true;
 const autoFightIntervalMs = 1000;
-const defaultFoodShopItem = {
+const defaultShopItem = {
   itemKey: "food",
   displayName: "Food",
   goldPrice: 5,
   effect: { foodDelta: 1 }
 };
+const defaultShopItems = [defaultShopItem];
 let autoFightTimerId = null;
 let autoFightTickInProgress = false;
 let currentPreferredEnemyKey = defaultPreferredEnemyKey;
 let currentPowerStrikeEnabled = defaultPowerStrikeEnabled;
-let currentFoodShopItem = { ...defaultFoodShopItem };
+let currentShopItems = [...defaultShopItems];
 
 const preferredEnemyDisplayNameByKey = {
   random: "Random",
@@ -100,31 +102,30 @@ function writeLastResultMessages(messages) {
     : "No action yet.";
 }
 
-function formatBuyFoodButtonText(foodShopItem) {
-  const itemName = foodShopItem?.displayName ?? defaultFoodShopItem.displayName;
-  const goldPrice = Number.isFinite(foodShopItem?.goldPrice) ? foodShopItem.goldPrice : defaultFoodShopItem.goldPrice;
-  const foodDelta = Number.isFinite(foodShopItem?.effect?.foodDelta) ? foodShopItem.effect.foodDelta : defaultFoodShopItem.effect.foodDelta;
-  return `Buy ${foodDelta} ${itemName} (-${goldPrice} Gold)`;
+function getShopItemEffectText(shopItem) {
+  const foodDelta = Number.isFinite(shopItem?.effect?.foodDelta) ? shopItem.effect.foodDelta : 0;
+  return `+${foodDelta} Food`;
 }
 
-function syncFoodShopUi() {
-  const buyFoodButton = document.getElementById("buyFoodButton");
-  buyFoodButton.textContent = formatBuyFoodButtonText(currentFoodShopItem);
+function syncShopItemsUi() {
+  const rows = currentShopItems.map(item =>
+    `<div>${item.displayName} | ${item.goldPrice} Gold | ${getShopItemEffectText(item)} <button type="button" data-shop-item-key="${item.itemKey}">Buy</button></div>`);
+  shopItemsContainerElement.innerHTML = rows.length > 0 ? rows.join("") : "No shop items.";
 }
 
 function normalizeFoodShopItem(rawItem) {
   const itemKey = typeof rawItem?.itemKey === "string" && rawItem.itemKey.trim().length > 0
     ? rawItem.itemKey.trim().toLowerCase()
-    : defaultFoodShopItem.itemKey;
+    : defaultShopItem.itemKey;
   const displayName = typeof rawItem?.displayName === "string" && rawItem.displayName.trim().length > 0
     ? rawItem.displayName.trim()
-    : defaultFoodShopItem.displayName;
+    : defaultShopItem.displayName;
   const goldPrice = Number.isFinite(rawItem?.goldPrice) && rawItem.goldPrice >= 0
     ? rawItem.goldPrice
-    : defaultFoodShopItem.goldPrice;
+    : defaultShopItem.goldPrice;
   const foodDelta = Number.isFinite(rawItem?.effect?.foodDelta)
     ? rawItem.effect.foodDelta
-    : defaultFoodShopItem.effect.foodDelta;
+    : defaultShopItem.effect.foodDelta;
 
   return {
     itemKey,
@@ -134,18 +135,21 @@ function normalizeFoodShopItem(rawItem) {
   };
 }
 
-async function loadFoodShopItemDefinition() {
-  const response = await fetch("/api/shop/items/food");
+async function loadShopItems() {
+  const response = await fetch("/api/shop/items");
   if (!response.ok) {
-    currentFoodShopItem = { ...defaultFoodShopItem };
-    syncFoodShopUi();
+    currentShopItems = [...defaultShopItems];
+    syncShopItemsUi();
     return;
   }
 
   const text = await response.text();
-  const item = JSON.parse(text);
-  currentFoodShopItem = normalizeFoodShopItem(item);
-  syncFoodShopUi();
+  const items = JSON.parse(text);
+  const normalizedItems = Array.isArray(items)
+    ? items.map(normalizeFoodShopItem)
+    : [];
+  currentShopItems = normalizedItems.length > 0 ? normalizedItems : [...defaultShopItems];
+  syncShopItemsUi();
 }
 
 function showPlayerStatus(player) {
@@ -405,15 +409,15 @@ async function useFood(options = {}) {
   };
 }
 
-async function buyFood() {
+async function buyShopItem(itemKey) {
   const id = playerIdInput.value;
-  const response = await fetch(`/api/players/${encodeURIComponent(id)}/buy-food`, {
+  const response = await fetch(`/api/players/${encodeURIComponent(id)}/buy-item/${encodeURIComponent(itemKey)}`, {
     method: "POST"
   });
 
   const text = await response.text();
   if (!response.ok) {
-    let message = `Buy Food failed (${response.status}).`;
+    let message = `Buy item failed (${response.status}).`;
     try {
       const errorPayload = JSON.parse(text);
       if (errorPayload?.message) {
@@ -423,22 +427,24 @@ async function buyFood() {
       // keep fallback message
     }
 
-    writeLastResultMessages([`Buy Food failed: ${message}`]);
-    showResult({ error: `Buy food failed (${response.status})`, detail: text });
+    writeLastResultMessages([`Buy item failed: ${message}`]);
+    showResult({ error: `Buy item failed (${response.status})`, detail: text });
     return;
   }
 
   const player = JSON.parse(text);
   showPlayerStatus(player);
   showCurrentEnemy(player);
-  const itemName = currentFoodShopItem.displayName ?? defaultFoodShopItem.displayName;
-  const goldPrice = Number.isFinite(currentFoodShopItem.goldPrice) ? currentFoodShopItem.goldPrice : defaultFoodShopItem.goldPrice;
-  const foodDelta = Number.isFinite(currentFoodShopItem.effect?.foodDelta)
-    ? currentFoodShopItem.effect.foodDelta
-    : defaultFoodShopItem.effect.foodDelta;
-  writeLastResultMessages([
-    `Buy ${itemName} success: Spent ${goldPrice} Gold, gained ${foodDelta} ${itemName}. Remaining Gold: ${player.gold}, Current Food: ${player.food}.`
-  ]);
+  const boughtItem = currentShopItems.find(item => item.itemKey === itemKey) ?? null;
+  if (boughtItem) {
+    writeLastResultMessages([
+      `Buy ${boughtItem.displayName} success: Spent ${boughtItem.goldPrice} Gold, gained ${boughtItem.effect.foodDelta} ${boughtItem.displayName}. Remaining Gold: ${player.gold}, Current Food: ${player.food}.`
+    ]);
+  } else {
+    writeLastResultMessages([
+      `Buy item success: ${itemKey}. Remaining Gold: ${player.gold}, Current Food: ${player.food}.`
+    ]);
+  }
   showResult(player);
 }
 
@@ -607,7 +613,19 @@ document.getElementById("createPlayerButton").addEventListener("click", createPl
 document.getElementById("addGoldButton").addEventListener("click", addGold);
 document.getElementById("fightButton").addEventListener("click", fight);
 document.getElementById("useFoodButton").addEventListener("click", useFood);
-document.getElementById("buyFoodButton").addEventListener("click", buyFood);
+shopItemsContainerElement.addEventListener("click", event => {
+  const target = event.target;
+  if (!(target instanceof HTMLElement)) {
+    return;
+  }
+
+  const itemKey = target.getAttribute("data-shop-item-key");
+  if (!itemKey) {
+    return;
+  }
+
+  buyShopItem(itemKey);
+});
 startAutoFightButton.addEventListener("click", startAutoFight);
 stopAutoFightButton.addEventListener("click", stopAutoFight);
 autoUseFoodCheckbox.addEventListener("change", setAutoUseFoodStatus);
@@ -616,6 +634,6 @@ preferredEnemySelect.addEventListener("change", setPreferredEnemy);
 powerStrikeCheckbox.addEventListener("change", setPowerStrikeEnabled);
 setAutoFightStatus(false);
 setAutoUseFoodStatus();
-loadFoodShopItemDefinition();
+loadShopItems();
 syncPreferredEnemyUi(null);
 syncPowerStrikeUi(null);
