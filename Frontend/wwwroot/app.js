@@ -933,7 +933,13 @@ document.getElementById("addGoldButton").addEventListener("click", addGold);
 document.getElementById("fightButton").addEventListener("click", fight);
 document.getElementById("useFoodButton").addEventListener("click", useFood);
 document.getElementById("usePotionButton").addEventListener("click", () => {
-  const potionItemKey = getManualConsumableItemKeyByDisplayName("Potion") ?? "potion";
+  const potionItemKey = getManualConsumableItemKeyByDisplayName("Potion");
+  if (!potionItemKey) {
+    writeLastResultMessages(["Use item failed: Potion consumable is not configured."]);
+    showResult({ error: "Use item failed.", detail: "Potion consumable is not configured in shop item metadata." });
+    return;
+  }
+
   useItem(potionItemKey);
 });
 shopItemsContainerElement.addEventListener("click", event => {

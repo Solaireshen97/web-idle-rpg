@@ -752,11 +752,13 @@ static bool TryGetConsumableUseMetadata(
     ShopItemDefinitionDto item,
     out ConsumableUseMetadataDto consumableUse)
 {
-    consumableUse = item.ConsumableUse ?? new ConsumableUseMetadataDto(ConsumedAmount: 0, HpRecover: 0);
     if (item.ConsumableUse is null)
     {
+        consumableUse = default!;
         return false;
     }
+
+    consumableUse = item.ConsumableUse;
 
     if (consumableUse.ConsumedAmount <= 0)
     {
