@@ -170,12 +170,13 @@ app.MapPost("/api/players/{id:int}/use-food", async (GameDbContext dbContext, in
     var playerDto = await BuildPlayerDtoWithFoodProjectionAsync(dbContext, player);
     return Results.Ok(new UseFoodResultDto(
         ActionName: "Use Food",
-        ResourceKey: "food",
+        ItemKey: FoodItemKey,
         ConsumedAmount: UseFoodConsumedAmount,
-        ResourcesDelta: BuildUseFoodResourcesDelta(UseFoodConsumedAmount),
-        HoldingDelta: BuildHoldingDelta(FoodItemKey, -UseFoodConsumedAmount),
+        ResourcesDelta: BuildConsumableUseResourcesDelta(FoodItemKey, UseFoodConsumedAmount),
+        HoldingDelta: BuildConsumableUseHoldingDelta(FoodItemKey, UseFoodConsumedAmount),
         RecoveredHp: recoveredHp,
-        Player: playerDto));
+        Player: playerDto,
+        ResourceKey: FoodItemKey));
 });
 
 app.MapPost("/api/players/{id:int}/use-item/{itemKey}", async (GameDbContext dbContext, int id, string itemKey) =>
@@ -216,11 +217,8 @@ app.MapPost("/api/players/{id:int}/use-item/{itemKey}", async (GameDbContext dbC
         ActionName: $"Use {item.DisplayName}",
         ItemKey: item.ItemKey,
         ConsumedAmount: consumedAmount,
-        ResourcesDelta: CreateResourceDelta(
-            goldDelta: 0,
-            experienceDelta: 0,
-            foodDelta: 0),
-        HoldingDelta: BuildHoldingDelta(item.ItemKey, -consumedAmount),
+        ResourcesDelta: BuildConsumableUseResourcesDelta(item.ItemKey, consumedAmount),
+        HoldingDelta: BuildConsumableUseHoldingDelta(item.ItemKey, consumedAmount),
         RecoveredHp: recoveredHp,
         Player: playerDto));
 });
@@ -1008,6 +1006,17 @@ static ResourceDeltaDto BuildUseFoodResourcesDelta(int consumedAmount) =>
         goldDelta: 0,
         experienceDelta: 0,
         foodDelta: -consumedAmount);
+
+static ResourceDeltaDto BuildConsumableUseResourcesDelta(string itemKey, int consumedAmount) =>
+    itemKey.Equals(FoodItemKey, StringComparison.OrdinalIgnoreCase)
+        ? BuildUseFoodResourcesDelta(consumedAmount)
+        : CreateResourceDelta(
+            goldDelta: 0,
+            experienceDelta: 0,
+            foodDelta: 0);
+
+static HoldingDeltaDto BuildConsumableUseHoldingDelta(string itemKey, int consumedAmount) =>
+    BuildHoldingDelta(itemKey, -consumedAmount);
 
 static HoldingDeltaDto BuildHoldingDelta(string itemKey, int quantityDelta) =>
     new(

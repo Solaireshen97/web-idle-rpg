@@ -131,28 +131,30 @@ function formatShopPurchaseResultSummary(purchaseResult) {
 }
 
 function formatUseFoodResultSummary(useFoodResult, source) {
-  const player = useFoodResult?.player ?? null;
-  const actionName = source === "auto" ? "Auto Use Food" : (typeof useFoodResult?.actionName === "string" && useFoodResult.actionName.trim().length > 0
-    ? useFoodResult.actionName.trim()
-    : "Use Food");
-  const resourceDelta = resolveUseFoodResourceDelta(useFoodResult);
-  const holdingDelta = resolveHoldingDelta(useFoodResult?.holdingDelta);
-  const recoveredHp = Number.isFinite(useFoodResult?.recoveredHp) ? useFoodResult.recoveredHp : 0;
-  const currentHp = Number.isFinite(player?.currentHp) ? player.currentHp : "?";
-  const maxHp = Number.isFinite(player?.maxHp) ? player.maxHp : "?";
-  return `${actionName}: Resource Delta ${formatResourceDeltaText(resourceDelta.goldDelta, resourceDelta.experienceDelta, resourceDelta.foodDelta)}, Holding Delta ${formatHoldingDeltaText(holdingDelta)}, recovered ${recoveredHp} HP. Current HP: ${currentHp}/${maxHp}.`;
+  return formatConsumableUseResultSummary(useFoodResult, {
+    defaultItemKey: "food",
+    actionName: source === "auto" ? "Auto Use Food" : undefined
+  });
 }
 
 function formatUseItemResultSummary(useItemResult) {
-  const player = useItemResult?.player ?? null;
-  const actionName = typeof useItemResult?.actionName === "string" && useItemResult.actionName.trim().length > 0
-    ? useItemResult.actionName.trim()
-    : "Use Item";
-  const recoveredHp = Number.isFinite(useItemResult?.recoveredHp) ? useItemResult.recoveredHp : 0;
-  const resourceDelta = resolveUseItemResourceDelta(useItemResult);
-  const holdingDelta = resolveHoldingDelta(useItemResult?.holdingDelta, {
-    itemKey: useItemResult?.itemKey,
-    quantityDelta: -1 * (Number.isFinite(useItemResult?.consumedAmount) ? useItemResult.consumedAmount : 1)
+  return formatConsumableUseResultSummary(useItemResult);
+}
+
+function formatConsumableUseResultSummary(useResult, options = {}) {
+  const player = useResult?.player ?? null;
+  const itemKey = resolveConsumableUseItemKey(useResult, options.defaultItemKey);
+  const consumedAmount = Number.isFinite(useResult?.consumedAmount) ? useResult.consumedAmount : 1;
+  const actionName = typeof options.actionName === "string" && options.actionName.trim().length > 0
+    ? options.actionName.trim()
+    : (typeof useResult?.actionName === "string" && useResult.actionName.trim().length > 0
+      ? useResult.actionName.trim()
+      : `Use ${humanizeHoldingItemKey(itemKey)}`);
+  const recoveredHp = Number.isFinite(useResult?.recoveredHp) ? useResult.recoveredHp : 0;
+  const resourceDelta = resolveConsumableUseResourceDelta(useResult, itemKey, consumedAmount);
+  const holdingDelta = resolveHoldingDelta(useResult?.holdingDelta, {
+    itemKey,
+    quantityDelta: -consumedAmount
   });
   const currentHp = Number.isFinite(player?.currentHp) ? player.currentHp : "?";
   const maxHp = Number.isFinite(player?.maxHp) ? player.maxHp : "?";
@@ -413,23 +415,44 @@ function resolveShopPurchaseResourceDelta(purchaseResult) {
   };
 }
 
-function resolveUseFoodResourceDelta(useFoodResult) {
-  const resourcesDelta = useFoodResult?.resourcesDelta ?? null;
-  const consumedAmount = Number.isFinite(useFoodResult?.consumedAmount) ? useFoodResult.consumedAmount : 1;
+function resolveConsumableUseResourceDelta(useResult, itemKey, consumedAmount) {
+  const resourcesDelta = useResult?.resourcesDelta ?? null;
+  const fallbackFoodDelta = itemKey === "food" ? -consumedAmount : 0;
   return {
     goldDelta: coalesceFiniteWithZeroDefault(resourcesDelta?.goldDelta, 0),
     experienceDelta: coalesceFiniteWithZeroDefault(resourcesDelta?.experienceDelta, 0),
-    foodDelta: coalesceFiniteWithZeroDefault(resourcesDelta?.foodDelta, -consumedAmount)
+    foodDelta: coalesceFiniteWithZeroDefault(resourcesDelta?.foodDelta, fallbackFoodDelta)
   };
 }
 
+function resolveConsumableUseItemKey(useResult, defaultItemKey = "item") {
+  const rawItemKey = typeof useResult?.itemKey === "string" && useResult.itemKey.trim().length > 0
+    ? useResult.itemKey.trim().toLowerCase()
+    : "";
+  if (rawItemKey.length > 0) {
+    return rawItemKey;
+  }
+
+  const rawResourceKey = typeof useResult?.resourceKey === "string" && useResult.resourceKey.trim().length > 0
+    ? useResult.resourceKey.trim().toLowerCase()
+    : "";
+  if (rawResourceKey.length > 0) {
+    return rawResourceKey;
+  }
+
+  return defaultItemKey;
+}
+
 function resolveUseItemResourceDelta(useItemResult) {
-  const resourcesDelta = useItemResult?.resourcesDelta ?? null;
-  return {
-    goldDelta: coalesceFiniteWithZeroDefault(resourcesDelta?.goldDelta, 0),
-    experienceDelta: coalesceFiniteWithZeroDefault(resourcesDelta?.experienceDelta, 0),
-    foodDelta: coalesceFiniteWithZeroDefault(resourcesDelta?.foodDelta, 0)
-  };
+  const itemKey = resolveConsumableUseItemKey(useItemResult);
+  const consumedAmount = Number.isFinite(useItemResult?.consumedAmount) ? useItemResult.consumedAmount : 1;
+  return resolveConsumableUseResourceDelta(useItemResult, itemKey, consumedAmount);
+}
+
+function resolveUseFoodResourceDelta(useFoodResult) {
+  const itemKey = resolveConsumableUseItemKey(useFoodResult, "food");
+  const consumedAmount = Number.isFinite(useFoodResult?.consumedAmount) ? useFoodResult.consumedAmount : 1;
+  return resolveConsumableUseResourceDelta(useFoodResult, itemKey, consumedAmount);
 }
 
 function resolveHoldingDelta(rawHoldingDelta, fallback = null) {

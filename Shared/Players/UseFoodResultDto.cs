@@ -2,9 +2,10 @@ namespace Shared.Players;
 
 public sealed record UseFoodResultDto(
     string ActionName,
-    string ResourceKey,
+    string ItemKey,
     int ConsumedAmount,
     ResourceDeltaDto ResourcesDelta,
     HoldingDeltaDto HoldingDelta,
     int RecoveredHp,
-    PlayerDto Player);
+    PlayerDto Player,
+    string? ResourceKey = null);
