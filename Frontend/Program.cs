@@ -169,6 +169,27 @@ app.MapPost("/api/players/{id:int}/use-food", async (IHttpClientFactory httpClie
         : Results.Ok(useFoodResult);
 });
 
+app.MapPost("/api/players/{id:int}/use-item/{itemKey}", async (IHttpClientFactory httpClientFactory, int id, string itemKey) =>
+{
+    var serverApi = httpClientFactory.CreateClient("ServerApi");
+    var response = await serverApi.PostAsync($"/api/players/{id}/use-item/{Uri.EscapeDataString(itemKey)}", content: null);
+
+    if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+    {
+        return Results.NotFound();
+    }
+
+    if (!response.IsSuccessStatusCode)
+    {
+        return await ForwardResponseAsContentAsync(response);
+    }
+
+    var useItemResult = await response.Content.ReadFromJsonAsync<UseItemResultDto>();
+    return useItemResult is null
+        ? Results.StatusCode(StatusCodes.Status502BadGateway)
+        : Results.Ok(useItemResult);
+});
+
 app.MapPost("/api/players/{id:int}/buy-food", async (IHttpClientFactory httpClientFactory, int id) =>
 {
     var serverApi = httpClientFactory.CreateClient("ServerApi");

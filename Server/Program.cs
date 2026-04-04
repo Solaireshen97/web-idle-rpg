@@ -6,6 +6,7 @@ using Shared.Shop;
 
 const int GoldIncrementAmount = 10;
 const int FoodHealAmount = 10;
+const int PotionHealAmount = 20;
 const int UseFoodConsumedAmount = 1;
 const int BaseExpPerLevel = 10;
 const int ExpPerLevelGrowth = 5;
@@ -22,6 +23,7 @@ const string EnemyAttackActionName = "Enemy Attack";
 const string PlayersTableName = "Players";
 const string PlayerItemHoldingsTableName = "PlayerItemHoldings";
 const string FoodItemKey = "food";
+const string PotionItemKey = "potion";
 const string PreferredEnemyRandomKey = "random";
 const string PreferredEnemyTrainingSlimeKey = "training-slime";
 const string PreferredEnemyWolfKey = "wolf";
@@ -41,17 +43,22 @@ var shopItems = new[]
         ItemKey: "food",
         DisplayName: "Food",
         GoldPrice: 5,
-        Effect: new ShopItemEffectDto(FoodDelta: 1)),
+        Effect: new ShopItemEffectDto(FoodDelta: 1, HpRecover: FoodHealAmount)),
     new ShopItemDefinitionDto(
         ItemKey: "food-pack",
         DisplayName: "Food Pack",
         GoldPrice: 12,
-        Effect: new ShopItemEffectDto(FoodDelta: 3)),
+        Effect: new ShopItemEffectDto(FoodDelta: 3, HpRecover: FoodHealAmount)),
     new ShopItemDefinitionDto(
         ItemKey: "food-crate",
         DisplayName: "Food Crate",
         GoldPrice: 18,
-        Effect: new ShopItemEffectDto(FoodDelta: 5))
+        Effect: new ShopItemEffectDto(FoodDelta: 5, HpRecover: FoodHealAmount)),
+    new ShopItemDefinitionDto(
+        ItemKey: PotionItemKey,
+        DisplayName: "Potion",
+        GoldPrice: 10,
+        Effect: new ShopItemEffectDto(FoodDelta: 0, HpRecover: PotionHealAmount))
 };
 var shopItemByKey = shopItems.ToDictionary(item => item.ItemKey, StringComparer.OrdinalIgnoreCase);
 
@@ -166,6 +173,52 @@ app.MapPost("/api/players/{id:int}/use-food", async (GameDbContext dbContext, in
         ResourceKey: "food",
         ConsumedAmount: UseFoodConsumedAmount,
         ResourcesDelta: BuildUseFoodResourcesDelta(UseFoodConsumedAmount),
+        RecoveredHp: recoveredHp,
+        Player: playerDto));
+});
+
+app.MapPost("/api/players/{id:int}/use-item/{itemKey}", async (GameDbContext dbContext, int id, string itemKey) =>
+{
+    var player = await dbContext.Players.FindAsync(id);
+    if (player is null)
+    {
+        return Results.NotFound();
+    }
+
+    if (!TryGetShopItemDefinition(shopItemByKey, itemKey, out var item))
+    {
+        return Results.NotFound(new { message = "Consumable item not found." });
+    }
+
+    if (!item.ItemKey.Equals(PotionItemKey, StringComparison.OrdinalIgnoreCase))
+    {
+        return Results.BadRequest(new { message = "Item is not a supported consumable action." });
+    }
+
+    var holding = await GetOrCreateAndPersistHoldingAsync(dbContext, player, item.ItemKey);
+    if (holding.Quantity <= 0)
+    {
+        return Results.BadRequest(new { message = $"Not enough {item.ItemKey}." });
+    }
+
+    const int consumedAmount = 1;
+    var hpBeforeUseItem = player.CurrentHp;
+    UpdateItemHoldingQuantityInMemory(holding, -consumedAmount);
+    await SyncFoodProjectionFromHoldingAsync(dbContext, player);
+    player.CurrentHp = Math.Min(player.MaxHp, player.CurrentHp + item.Effect.HpRecover);
+    var recoveredHp = Math.Max(0, player.CurrentHp - hpBeforeUseItem);
+    player.UpdatedAt = DateTime.UtcNow;
+
+    await dbContext.SaveChangesAsync();
+    var playerDto = await BuildPlayerDtoWithFoodProjectionAsync(dbContext, player);
+    return Results.Ok(new UseItemResultDto(
+        ActionName: $"Use {item.DisplayName}",
+        ItemKey: item.ItemKey,
+        ConsumedAmount: consumedAmount,
+        ResourcesDelta: CreateResourceDelta(
+            goldDelta: 0,
+            experienceDelta: 0,
+            foodDelta: 0),
         RecoveredHp: recoveredHp,
         Player: playerDto));
 });
@@ -659,7 +712,7 @@ static async Task<IResult> BuyShopItemAsync(
     }
 
     ApplyShopPurchase(player, item);
-    await ApplyFoodShopEffectAsync(dbContext, player, item.Effect);
+    await ApplyShopItemHoldingEffectAsync(dbContext, player, item);
 
     await dbContext.SaveChangesAsync();
     var playerDto = await BuildPlayerDtoWithFoodProjectionAsync(dbContext, player);
@@ -704,14 +757,20 @@ static void ApplyShopPurchase(Player player, ShopItemDefinitionDto item)
     player.UpdatedAt = DateTime.UtcNow;
 }
 
-static async Task ApplyFoodShopEffectAsync(
+static async Task ApplyShopItemHoldingEffectAsync(
     GameDbContext dbContext,
     Player player,
-    ShopItemEffectDto effect)
+    ShopItemDefinitionDto item)
 {
-    var foodHolding = await GetOrCreateAndPersistFoodHoldingAsync(dbContext, player);
-    UpdateItemHoldingQuantityInMemory(foodHolding, effect.FoodDelta);
-    SyncFoodProjection(player, foodHolding);
+    var holding = await GetOrCreateAndPersistHoldingAsync(dbContext, player, item.ItemKey);
+    if (item.ItemKey.Equals(FoodItemKey, StringComparison.OrdinalIgnoreCase))
+    {
+        UpdateItemHoldingQuantityInMemory(holding, item.Effect.FoodDelta);
+        await SyncFoodProjectionFromHoldingAsync(dbContext, player);
+        return;
+    }
+
+    UpdateItemHoldingQuantityInMemory(holding, 1);
 }
 
 static bool TryGetPreferredEnemyKey(string? preferredEnemyKey, out string normalizedKey)
@@ -957,14 +1016,15 @@ static FightRewardResultDto BuildFightRewardResultDto(FightSettlementResult sett
             experienceDelta: settlementResult.ExpReward,
             foodDelta: settlementResult.FoodReward));
 
-static async Task<PlayerItemHolding> GetOrCreateAndPersistFoodHoldingAsync(
+static async Task<PlayerItemHolding> GetOrCreateAndPersistHoldingAsync(
     GameDbContext dbContext,
-    Player player)
+    Player player,
+    string itemKey)
 {
     var existingHolding = await dbContext.PlayerItemHoldings
         .FirstOrDefaultAsync(holding =>
             holding.PlayerId == player.Id
-            && holding.ItemKey == FoodItemKey);
+            && holding.ItemKey == itemKey);
     if (existingHolding is not null)
     {
         return existingHolding;
@@ -973,14 +1033,21 @@ static async Task<PlayerItemHolding> GetOrCreateAndPersistFoodHoldingAsync(
     var newHolding = new PlayerItemHolding
     {
         PlayerId = player.Id,
-        ItemKey = FoodItemKey,
-        // Migration bridge: seed first food holding from legacy Player.Food when transitioning existing players.
-        Quantity = Math.Max(0, player.Food)
+        ItemKey = itemKey,
+        // Transitional bridge: only food can be seeded from legacy Player.Food during migration to holdings.
+        Quantity = itemKey.Equals(FoodItemKey, StringComparison.OrdinalIgnoreCase)
+            ? Math.Max(0, player.Food)
+            : 0
     };
     dbContext.PlayerItemHoldings.Add(newHolding);
     await dbContext.SaveChangesAsync();
     return newHolding;
 }
+
+static async Task<PlayerItemHolding> GetOrCreateAndPersistFoodHoldingAsync(
+    GameDbContext dbContext,
+    Player player) =>
+    await GetOrCreateAndPersistHoldingAsync(dbContext, player, FoodItemKey);
 
 static void UpdateItemHoldingQuantityInMemory(PlayerItemHolding holding, int quantityDelta)
 {
@@ -998,17 +1065,21 @@ static void SyncFoodProjection(Player player, PlayerItemHolding foodHolding)
     player.Food = foodHolding.Quantity;
 }
 
-static async Task<PlayerDto> BuildPlayerDtoWithFoodProjectionAsync(GameDbContext dbContext, Player player)
+static async Task SyncFoodProjectionFromHoldingAsync(GameDbContext dbContext, Player player)
 {
     var foodHolding = await GetOrCreateAndPersistFoodHoldingAsync(dbContext, player);
     SyncFoodProjection(player, foodHolding);
+}
+
+static async Task<PlayerDto> BuildPlayerDtoWithFoodProjectionAsync(GameDbContext dbContext, Player player)
+{
+    await SyncFoodProjectionFromHoldingAsync(dbContext, player);
     return ToPlayerDto(player);
 }
 
 static async Task<IReadOnlyList<PlayerItemHoldingDto>> BuildPlayerItemHoldingDtosAsync(GameDbContext dbContext, Player player)
 {
-    var foodHolding = await GetOrCreateAndPersistFoodHoldingAsync(dbContext, player);
-    SyncFoodProjection(player, foodHolding);
+    await SyncFoodProjectionFromHoldingAsync(dbContext, player);
 
     var holdings = await dbContext.PlayerItemHoldings
         .Where(holding => holding.PlayerId == player.Id && holding.Quantity > 0)
@@ -1026,7 +1097,9 @@ static PlayerItemHoldingDto ToPlayerItemHoldingDto(PlayerItemHolding holding) =>
         holding.Quantity,
         holding.ItemKey.Equals(FoodItemKey, StringComparison.OrdinalIgnoreCase)
             ? "Food"
-            : holding.ItemKey);
+            : (holding.ItemKey.Equals(PotionItemKey, StringComparison.OrdinalIgnoreCase)
+                ? "Potion"
+                : holding.ItemKey));
 
 file sealed record EnemyTemplate(
     string Name,
@@ -1076,6 +1149,7 @@ file enum FightSettlementBranch
     PlayerDefeated,
     Ongoing
 }
+
 
 file enum PlayerTurnActionType
 {

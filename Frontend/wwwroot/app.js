@@ -104,8 +104,17 @@ function writeLastResultMessages(messages) {
 }
 
 function getShopItemEffectText(shopItem) {
+  if (isPureHpRecoverShopItem(shopItem)) {
+    return `Recover ${shopItem.effect.hpRecover} HP`;
+  }
   const foodDelta = Number.isFinite(shopItem?.effect?.foodDelta) ? shopItem.effect.foodDelta : 0;
   return `+${foodDelta} Food`;
+}
+
+function isPureHpRecoverShopItem(shopItem) {
+  const hpRecover = Number.isFinite(shopItem?.effect?.hpRecover) ? shopItem.effect.hpRecover : 0;
+  const foodDelta = Number.isFinite(shopItem?.effect?.foodDelta) ? shopItem.effect.foodDelta : 0;
+  return hpRecover > 0 && foodDelta <= 0;
 }
 
 function formatShopPurchaseResultSummary(purchaseResult) {
@@ -132,6 +141,19 @@ function formatUseFoodResultSummary(useFoodResult, source) {
   return `${actionName}: Resource Delta ${formatResourceDeltaText(resourceDelta.goldDelta, resourceDelta.experienceDelta, resourceDelta.foodDelta)}, recovered ${recoveredHp} HP. Current HP: ${currentHp}/${maxHp}.`;
 }
 
+function formatUseItemResultSummary(useItemResult) {
+  const player = useItemResult?.player ?? null;
+  const actionName = typeof useItemResult?.actionName === "string" && useItemResult.actionName.trim().length > 0
+    ? useItemResult.actionName.trim()
+    : "Use Item";
+  const recoveredHp = Number.isFinite(useItemResult?.recoveredHp) ? useItemResult.recoveredHp : 0;
+  const itemKey = typeof useItemResult?.itemKey === "string" ? useItemResult.itemKey : "item";
+  const consumedAmount = Number.isFinite(useItemResult?.consumedAmount) ? useItemResult.consumedAmount : 1;
+  const currentHp = Number.isFinite(player?.currentHp) ? player.currentHp : "?";
+  const maxHp = Number.isFinite(player?.maxHp) ? player.maxHp : "?";
+  return `${actionName}: consumed ${consumedAmount} ${itemKey}, recovered ${recoveredHp} HP. Current HP: ${currentHp}/${maxHp}.`;
+}
+
 function syncShopItemsUi() {
   const rows = currentShopItems.map(item =>
     `<div>${item.displayName} | ${item.goldPrice} Gold | ${getShopItemEffectText(item)} <button type="button" data-shop-item-key="${item.itemKey}">Buy</button></div>`);
@@ -151,12 +173,15 @@ function normalizeShopItem(rawItem) {
   const foodDelta = Number.isFinite(rawItem?.effect?.foodDelta)
     ? rawItem.effect.foodDelta
     : defaultShopItem.effect.foodDelta;
+  const hpRecover = Number.isFinite(rawItem?.effect?.hpRecover) && rawItem.effect.hpRecover >= 0
+    ? rawItem.effect.hpRecover
+    : 0;
 
   return {
     itemKey,
     displayName,
     goldPrice,
-    effect: { foodDelta }
+    effect: { foodDelta, hpRecover }
   };
 }
 
@@ -553,6 +578,38 @@ async function useFood(options = {}) {
   };
 }
 
+async function useItem(itemKey) {
+  const id = playerIdInput.value;
+  const response = await fetch(`/api/players/${encodeURIComponent(id)}/use-item/${encodeURIComponent(itemKey)}`, {
+    method: "POST"
+  });
+
+  const text = await response.text();
+  if (!response.ok) {
+    let message = "Use item failed.";
+    try {
+      const errorPayload = JSON.parse(text);
+      if (errorPayload?.message) {
+        message = errorPayload.message;
+      }
+    } catch {
+      // keep fallback message
+    }
+
+    writeLastResultMessages([message]);
+    showResult({ error: `Use item failed (${response.status})`, detail: text });
+    return;
+  }
+
+  const useItemResult = JSON.parse(text);
+  const player = useItemResult.player;
+  showPlayerStatus(player);
+  showCurrentEnemy(player);
+  await loadHoldings(player?.id);
+  writeLastResultMessages([formatUseItemResultSummary(useItemResult)]);
+  showResult(useItemResult);
+}
+
 async function buyShopItem(itemKey) {
   const id = playerIdInput.value;
   const response = await fetch(`/api/players/${encodeURIComponent(id)}/buy-item/${encodeURIComponent(itemKey)}`, {
@@ -759,6 +816,7 @@ document.getElementById("createPlayerButton").addEventListener("click", createPl
 document.getElementById("addGoldButton").addEventListener("click", addGold);
 document.getElementById("fightButton").addEventListener("click", fight);
 document.getElementById("useFoodButton").addEventListener("click", useFood);
+document.getElementById("usePotionButton").addEventListener("click", () => useItem("potion"));
 shopItemsContainerElement.addEventListener("click", event => {
   const target = event.target;
   if (!(target instanceof HTMLElement)) {

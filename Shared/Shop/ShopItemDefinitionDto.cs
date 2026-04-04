@@ -1,6 +1,8 @@
 namespace Shared.Shop;
 
-public sealed record ShopItemEffectDto(int FoodDelta);
+public sealed record ShopItemEffectDto(
+    int FoodDelta,
+    int HpRecover);
 
 public sealed record ShopItemDefinitionDto(
     string ItemKey,

@@ -16,7 +16,7 @@ public class PlayerItemHolding
     public int PlayerId { get; set; }
 
     /// <summary>
-    /// Logical item key (for now primarily "food").
+    /// Logical item key (for example: "food", "potion").
     /// </summary>
     public required string ItemKey { get; set; }
 
