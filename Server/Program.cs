@@ -161,30 +161,13 @@ app.MapPost("/api/players/{id:int}/use-food", async (GameDbContext dbContext, in
         return Results.NotFound();
     }
 
-    var foodHolding = await GetOrCreateAndPersistFoodHoldingAsync(dbContext, player);
-    if (foodHolding.Quantity <= 0)
+    var execution = await TryUseConsumableItemAsync(dbContext, player, FoodItemKey, shopItemByKey);
+    if (!execution.Success)
     {
-        return Results.BadRequest(new { message = "Not enough food." });
+        return BuildConsumableUseErrorResult(execution.StatusCode, execution.Message);
     }
 
-    var hpBeforeUseFood = player.CurrentHp;
-    UpdateItemHoldingQuantityInMemory(foodHolding, -UseFoodConsumedAmount);
-    SyncFoodProjection(player, foodHolding);
-    player.CurrentHp = Math.Min(player.MaxHp, player.CurrentHp + FoodHealAmount);
-    var recoveredHp = Math.Max(0, player.CurrentHp - hpBeforeUseFood);
-    player.UpdatedAt = DateTime.UtcNow;
-
-    await dbContext.SaveChangesAsync();
-    var playerDto = await BuildPlayerDtoWithFoodProjectionAsync(dbContext, player);
-    return Results.Ok(new UseFoodResultDto(
-        ActionName: "Use Food",
-        ItemKey: FoodItemKey,
-        ConsumedAmount: UseFoodConsumedAmount,
-        ResourcesDelta: BuildConsumableUseResourcesDelta(FoodItemKey, UseFoodConsumedAmount),
-        HoldingDelta: BuildConsumableUseHoldingDelta(FoodItemKey, UseFoodConsumedAmount),
-        RecoveredHp: recoveredHp,
-        Player: playerDto,
-        ResourceKey: FoodItemKey));
+    return Results.Ok(BuildUseFoodResultFromUseItemResult(execution.UseItemResult!));
 });
 
 app.MapPost("/api/players/{id:int}/use-item/{itemKey}", async (GameDbContext dbContext, int id, string itemKey) =>
@@ -195,40 +178,13 @@ app.MapPost("/api/players/{id:int}/use-item/{itemKey}", async (GameDbContext dbC
         return Results.NotFound();
     }
 
-    if (!TryGetShopItemDefinition(shopItemByKey, itemKey, out var item))
+    var execution = await TryUseConsumableItemAsync(dbContext, player, itemKey, shopItemByKey);
+    if (!execution.Success)
     {
-        return Results.NotFound(new { message = "Consumable item not found." });
+        return BuildConsumableUseErrorResult(execution.StatusCode, execution.Message);
     }
 
-    if (!TryGetConsumableUseMetadata(item, out var consumableUse))
-    {
-        return Results.BadRequest(new { message = "Item is not a supported consumable action." });
-    }
-
-    var holding = await GetOrCreateAndPersistHoldingAsync(dbContext, player, item.ItemKey);
-    if (holding.Quantity <= 0)
-    {
-        return Results.BadRequest(new { message = $"Not enough {item.ItemKey}." });
-    }
-
-    var consumedAmount = consumableUse.ConsumedAmount;
-    var hpBeforeUseItem = player.CurrentHp;
-    UpdateItemHoldingQuantityInMemory(holding, -consumedAmount);
-    await SyncFoodProjectionFromHoldingAsync(dbContext, player);
-    player.CurrentHp = Math.Min(player.MaxHp, player.CurrentHp + consumableUse.HpRecover);
-    var recoveredHp = Math.Max(0, player.CurrentHp - hpBeforeUseItem);
-    player.UpdatedAt = DateTime.UtcNow;
-
-    await dbContext.SaveChangesAsync();
-    var playerDto = await BuildPlayerDtoWithFoodProjectionAsync(dbContext, player);
-    return Results.Ok(new UseItemResultDto(
-        ActionName: $"Use {item.DisplayName}",
-        ItemKey: item.ItemKey,
-        ConsumedAmount: consumedAmount,
-        ResourcesDelta: BuildConsumableUseResourcesDelta(item.ItemKey, consumedAmount),
-        HoldingDelta: BuildConsumableUseHoldingDelta(item.ItemKey, consumedAmount),
-        RecoveredHp: recoveredHp,
-        Player: playerDto));
+    return Results.Ok(execution.UseItemResult);
 });
 
 app.MapPost("/api/players/{id:int}/buy-food", async (GameDbContext dbContext, int id) =>
@@ -773,6 +729,75 @@ static bool TryGetConsumableUseMetadata(
     return true;
 }
 
+static async Task<ConsumableUseExecutionResult> TryUseConsumableItemAsync(
+    GameDbContext dbContext,
+    Player player,
+    string itemKey,
+    IReadOnlyDictionary<string, ShopItemDefinitionDto> shopItemByKey)
+{
+    if (!TryGetShopItemDefinition(shopItemByKey, itemKey, out var item))
+    {
+        return ConsumableUseExecutionResult.NotFound("Consumable item not found.");
+    }
+
+    if (!TryGetConsumableUseMetadata(item, out var consumableUse))
+    {
+        return ConsumableUseExecutionResult.BadRequest("Item is not a supported consumable action.");
+    }
+
+    var holding = await GetOrCreateAndPersistHoldingAsync(dbContext, player, item.ItemKey);
+    if (holding.Quantity <= 0)
+    {
+        return ConsumableUseExecutionResult.BadRequest($"Not enough {item.ItemKey}.");
+    }
+
+    var consumedAmount = consumableUse.ConsumedAmount;
+    var hpBeforeUseItem = player.CurrentHp;
+    UpdateItemHoldingQuantityInMemory(holding, -consumedAmount);
+    await SyncFoodProjectionFromHoldingAsync(dbContext, player);
+    player.CurrentHp = Math.Min(player.MaxHp, player.CurrentHp + consumableUse.HpRecover);
+    var recoveredHp = Math.Max(0, player.CurrentHp - hpBeforeUseItem);
+    player.UpdatedAt = DateTime.UtcNow;
+
+    await dbContext.SaveChangesAsync();
+    var playerDto = await BuildPlayerDtoWithFoodProjectionAsync(dbContext, player);
+    var result = new UseItemResultDto(
+        ActionName: $"Use {item.DisplayName}",
+        ItemKey: item.ItemKey,
+        ConsumedAmount: consumedAmount,
+        ResourcesDelta: BuildConsumableUseResourcesDelta(item.ItemKey, consumedAmount),
+        HoldingDelta: BuildConsumableUseHoldingDelta(item.ItemKey, consumedAmount),
+        RecoveredHp: recoveredHp,
+        Player: playerDto);
+    return ConsumableUseExecutionResult.Succeed(result);
+}
+
+static IResult BuildConsumableUseErrorResult(int statusCode, string message)
+{
+    if (statusCode == StatusCodes.Status404NotFound)
+    {
+        return Results.NotFound(new { message });
+    }
+
+    if (statusCode == StatusCodes.Status400BadRequest)
+    {
+        return Results.BadRequest(new { message });
+    }
+
+    return Results.Json(new { message }, statusCode: statusCode);
+}
+
+static UseFoodResultDto BuildUseFoodResultFromUseItemResult(UseItemResultDto useItemResult) =>
+    new(
+        ActionName: useItemResult.ActionName,
+        ItemKey: useItemResult.ItemKey,
+        ConsumedAmount: useItemResult.ConsumedAmount,
+        ResourcesDelta: useItemResult.ResourcesDelta,
+        HoldingDelta: useItemResult.HoldingDelta,
+        RecoveredHp: useItemResult.RecoveredHp,
+        Player: useItemResult.Player,
+        ResourceKey: useItemResult.ItemKey);
+
 static bool CanAffordShopItem(Player player, ShopItemDefinitionDto item, out string message)
 {
     if (player.Gold >= item.GoldPrice)
@@ -1220,6 +1245,34 @@ file enum EnemyTurnActionType
 {
     EnemyJab,
     EnemyAttack
+}
+
+file sealed record ConsumableUseExecutionResult(
+    bool Success,
+    int StatusCode,
+    string Message,
+    UseItemResultDto? UseItemResult)
+{
+    public static ConsumableUseExecutionResult Succeed(UseItemResultDto result) =>
+        new(
+            Success: true,
+            StatusCode: StatusCodes.Status200OK,
+            Message: string.Empty,
+            UseItemResult: result);
+
+    public static ConsumableUseExecutionResult NotFound(string message) =>
+        new(
+            Success: false,
+            StatusCode: StatusCodes.Status404NotFound,
+            Message: message,
+            UseItemResult: null);
+
+    public static ConsumableUseExecutionResult BadRequest(string message) =>
+        new(
+            Success: false,
+            StatusCode: StatusCodes.Status400BadRequest,
+            Message: message,
+            UseItemResult: null);
 }
 
 file sealed record PlayerTurnExecutionResult(

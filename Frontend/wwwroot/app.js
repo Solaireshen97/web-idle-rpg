@@ -144,6 +144,23 @@ function getManualConsumableItemKeyByDisplayName(displayName) {
     : null;
 }
 
+async function useConsumableItem(itemKey, options = {}) {
+  const normalizedItemKey = typeof itemKey === "string" ? itemKey.trim().toLowerCase() : "";
+  if (!normalizedItemKey) {
+    if (options.writeLastResult !== false) {
+      writeLastResultMessages(["Use item failed: Invalid consumable item key."]);
+    }
+    showResult({ error: "Use item failed.", detail: "Invalid consumable item key." });
+    return null;
+  }
+
+  if (normalizedItemKey === "food") {
+    return useFood(options);
+  }
+
+  return useItem(normalizedItemKey, options);
+}
+
 function formatShopPurchaseResultSummary(purchaseResult) {
   const player = purchaseResult?.player ?? null;
   const displayName = typeof purchaseResult?.displayName === "string" && purchaseResult.displayName.trim().length > 0
@@ -694,7 +711,8 @@ async function useFood(options = {}) {
   };
 }
 
-async function useItem(itemKey) {
+async function useItem(itemKey, options = {}) {
+  const { writeLastResult = true } = options;
   const id = playerIdInput.value;
   const response = await fetch(`/api/players/${encodeURIComponent(id)}/use-item/${encodeURIComponent(itemKey)}`, {
     method: "POST"
@@ -712,7 +730,9 @@ async function useItem(itemKey) {
       // keep fallback message
     }
 
-    writeLastResultMessages([message]);
+    if (writeLastResult) {
+      writeLastResultMessages([message]);
+    }
     showResult({ error: `Use item failed (${response.status})`, detail: text });
     return;
   }
@@ -722,8 +742,16 @@ async function useItem(itemKey) {
   showPlayerStatus(player);
   showCurrentEnemy(player);
   await loadHoldings(player?.id);
-  writeLastResultMessages([formatUseItemResultSummary(useItemResult)]);
+  const message = formatUseItemResultSummary(useItemResult);
+  if (writeLastResult) {
+    writeLastResultMessages([message]);
+  }
   showResult(useItemResult);
+  return {
+    player,
+    useItemResult,
+    message
+  };
 }
 
 async function buyShopItem(itemKey) {
@@ -931,7 +959,7 @@ document.getElementById("loadPlayerButton").addEventListener("click", loadPlayer
 document.getElementById("createPlayerButton").addEventListener("click", createPlayer);
 document.getElementById("addGoldButton").addEventListener("click", addGold);
 document.getElementById("fightButton").addEventListener("click", fight);
-document.getElementById("useFoodButton").addEventListener("click", useFood);
+document.getElementById("useFoodButton").addEventListener("click", () => useConsumableItem("food"));
 document.getElementById("usePotionButton").addEventListener("click", () => {
   const potionItemKey = getManualConsumableItemKeyByDisplayName("Potion");
   if (!potionItemKey) {
@@ -940,7 +968,7 @@ document.getElementById("usePotionButton").addEventListener("click", () => {
     return;
   }
 
-  useItem(potionItemKey);
+  useConsumableItem(potionItemKey);
 });
 shopItemsContainerElement.addEventListener("click", event => {
   const target = event.target;
