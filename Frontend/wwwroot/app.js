@@ -123,10 +123,11 @@ function formatShopPurchaseResultSummary(purchaseResult) {
     ? purchaseResult.displayName.trim()
     : "item";
   const resourceDelta = resolveShopPurchaseResourceDelta(purchaseResult);
+  const holdingDelta = resolveHoldingDelta(purchaseResult?.holdingDelta);
   const currentGold = Number.isFinite(player?.gold) ? player.gold : "?";
   const currentExperience = Number.isFinite(player?.experience) ? player.experience : "?";
   const currentFood = Number.isFinite(player?.food) ? player.food : "?";
-  return `Buy ${displayName} success: Resource Delta ${formatResourceDeltaText(resourceDelta.goldDelta, resourceDelta.experienceDelta, resourceDelta.foodDelta)}. Current Resources: Gold ${currentGold}, EXP ${currentExperience}, Food ${currentFood}.`;
+  return `Buy ${displayName} success: Resource Delta ${formatResourceDeltaText(resourceDelta.goldDelta, resourceDelta.experienceDelta, resourceDelta.foodDelta)}, Holding Delta ${formatHoldingDeltaText(holdingDelta)}. Current Resources: Gold ${currentGold}, EXP ${currentExperience}, Food ${currentFood}.`;
 }
 
 function formatUseFoodResultSummary(useFoodResult, source) {
@@ -135,10 +136,11 @@ function formatUseFoodResultSummary(useFoodResult, source) {
     ? useFoodResult.actionName.trim()
     : "Use Food");
   const resourceDelta = resolveUseFoodResourceDelta(useFoodResult);
+  const holdingDelta = resolveHoldingDelta(useFoodResult?.holdingDelta);
   const recoveredHp = Number.isFinite(useFoodResult?.recoveredHp) ? useFoodResult.recoveredHp : 0;
   const currentHp = Number.isFinite(player?.currentHp) ? player.currentHp : "?";
   const maxHp = Number.isFinite(player?.maxHp) ? player.maxHp : "?";
-  return `${actionName}: Resource Delta ${formatResourceDeltaText(resourceDelta.goldDelta, resourceDelta.experienceDelta, resourceDelta.foodDelta)}, recovered ${recoveredHp} HP. Current HP: ${currentHp}/${maxHp}.`;
+  return `${actionName}: Resource Delta ${formatResourceDeltaText(resourceDelta.goldDelta, resourceDelta.experienceDelta, resourceDelta.foodDelta)}, Holding Delta ${formatHoldingDeltaText(holdingDelta)}, recovered ${recoveredHp} HP. Current HP: ${currentHp}/${maxHp}.`;
 }
 
 function formatUseItemResultSummary(useItemResult) {
@@ -147,11 +149,14 @@ function formatUseItemResultSummary(useItemResult) {
     ? useItemResult.actionName.trim()
     : "Use Item";
   const recoveredHp = Number.isFinite(useItemResult?.recoveredHp) ? useItemResult.recoveredHp : 0;
-  const itemKey = typeof useItemResult?.itemKey === "string" ? useItemResult.itemKey : "item";
-  const consumedAmount = Number.isFinite(useItemResult?.consumedAmount) ? useItemResult.consumedAmount : 1;
+  const resourceDelta = resolveUseItemResourceDelta(useItemResult);
+  const holdingDelta = resolveHoldingDelta(useItemResult?.holdingDelta, {
+    itemKey: useItemResult?.itemKey,
+    quantityDelta: -1 * (Number.isFinite(useItemResult?.consumedAmount) ? useItemResult.consumedAmount : 1)
+  });
   const currentHp = Number.isFinite(player?.currentHp) ? player.currentHp : "?";
   const maxHp = Number.isFinite(player?.maxHp) ? player.maxHp : "?";
-  return `${actionName}: consumed ${consumedAmount} ${itemKey}, recovered ${recoveredHp} HP. Current HP: ${currentHp}/${maxHp}.`;
+  return `${actionName}: Resource Delta ${formatResourceDeltaText(resourceDelta.goldDelta, resourceDelta.experienceDelta, resourceDelta.foodDelta)}, Holding Delta ${formatHoldingDeltaText(holdingDelta)}, recovered ${recoveredHp} HP. Current HP: ${currentHp}/${maxHp}.`;
 }
 
 function syncShopItemsUi() {
@@ -416,6 +421,57 @@ function resolveUseFoodResourceDelta(useFoodResult) {
     experienceDelta: coalesceFiniteWithZeroDefault(resourcesDelta?.experienceDelta, 0),
     foodDelta: coalesceFiniteWithZeroDefault(resourcesDelta?.foodDelta, -consumedAmount)
   };
+}
+
+function resolveUseItemResourceDelta(useItemResult) {
+  const resourcesDelta = useItemResult?.resourcesDelta ?? null;
+  return {
+    goldDelta: coalesceFiniteWithZeroDefault(resourcesDelta?.goldDelta, 0),
+    experienceDelta: coalesceFiniteWithZeroDefault(resourcesDelta?.experienceDelta, 0),
+    foodDelta: coalesceFiniteWithZeroDefault(resourcesDelta?.foodDelta, 0)
+  };
+}
+
+function resolveHoldingDelta(rawHoldingDelta, fallback = null) {
+  const fallbackItemKey = typeof fallback?.itemKey === "string" && fallback.itemKey.trim().length > 0
+    ? fallback.itemKey.trim().toLowerCase()
+    : "item";
+  const fallbackQuantityDelta = Number.isFinite(fallback?.quantityDelta) ? fallback.quantityDelta : 0;
+  const itemKey = typeof rawHoldingDelta?.itemKey === "string" && rawHoldingDelta.itemKey.trim().length > 0
+    ? rawHoldingDelta.itemKey.trim().toLowerCase()
+    : fallbackItemKey;
+  const quantityDelta = Number.isFinite(rawHoldingDelta?.quantityDelta)
+    ? rawHoldingDelta.quantityDelta
+    : fallbackQuantityDelta;
+  const displayName = typeof rawHoldingDelta?.displayName === "string" && rawHoldingDelta.displayName.trim().length > 0
+    ? rawHoldingDelta.displayName.trim()
+    : humanizeHoldingItemKey(itemKey);
+
+  return { itemKey, quantityDelta, displayName };
+}
+
+function humanizeHoldingItemKey(itemKey) {
+  if (typeof itemKey !== "string" || itemKey.trim().length <= 0) {
+    return "item";
+  }
+
+  return itemKey
+    .trim()
+    .split("-")
+    .filter(part => part.length > 0)
+    .map(part => `${part.charAt(0).toUpperCase()}${part.slice(1)}`)
+    .join(" ");
+}
+
+function formatHoldingDeltaText(holdingDelta) {
+  if (!holdingDelta || !Number.isFinite(holdingDelta.quantityDelta) || holdingDelta.quantityDelta === 0) {
+    return "(none)";
+  }
+
+  const displayName = typeof holdingDelta.displayName === "string" && holdingDelta.displayName.trim().length > 0
+    ? holdingDelta.displayName.trim()
+    : humanizeHoldingItemKey(holdingDelta.itemKey);
+  return `(${displayName} ${formatSignedDelta(holdingDelta.quantityDelta)})`;
 }
 
 function resolveFightRewardResourceDelta(fightResult, rewards) {

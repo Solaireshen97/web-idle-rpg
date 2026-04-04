@@ -5,5 +5,6 @@ public sealed record UseItemResultDto(
     string ItemKey,
     int ConsumedAmount,
     ResourceDeltaDto ResourcesDelta,
+    HoldingDeltaDto HoldingDelta,
     int RecoveredHp,
     PlayerDto Player);

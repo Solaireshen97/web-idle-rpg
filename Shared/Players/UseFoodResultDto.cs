@@ -5,5 +5,6 @@ public sealed record UseFoodResultDto(
     string ResourceKey,
     int ConsumedAmount,
     ResourceDeltaDto ResourcesDelta,
+    HoldingDeltaDto HoldingDelta,
     int RecoveredHp,
     PlayerDto Player);

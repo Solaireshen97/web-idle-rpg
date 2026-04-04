@@ -173,6 +173,7 @@ app.MapPost("/api/players/{id:int}/use-food", async (GameDbContext dbContext, in
         ResourceKey: "food",
         ConsumedAmount: UseFoodConsumedAmount,
         ResourcesDelta: BuildUseFoodResourcesDelta(UseFoodConsumedAmount),
+        HoldingDelta: BuildHoldingDelta(FoodItemKey, -UseFoodConsumedAmount),
         RecoveredHp: recoveredHp,
         Player: playerDto));
 });
@@ -219,6 +220,7 @@ app.MapPost("/api/players/{id:int}/use-item/{itemKey}", async (GameDbContext dbC
             goldDelta: 0,
             experienceDelta: 0,
             foodDelta: 0),
+        HoldingDelta: BuildHoldingDelta(item.ItemKey, -consumedAmount),
         RecoveredHp: recoveredHp,
         Player: playerDto));
 });
@@ -721,6 +723,7 @@ static async Task<IResult> BuyShopItemAsync(
         item.DisplayName,
         item.GoldPrice,
         BuildShopPurchaseResourcesDelta(item),
+        BuildShopPurchaseHoldingDelta(item),
         item.Effect,
         playerDto));
 }
@@ -1006,6 +1009,17 @@ static ResourceDeltaDto BuildUseFoodResourcesDelta(int consumedAmount) =>
         experienceDelta: 0,
         foodDelta: -consumedAmount);
 
+static HoldingDeltaDto BuildHoldingDelta(string itemKey, int quantityDelta) =>
+    new(
+        ItemKey: itemKey,
+        QuantityDelta: quantityDelta,
+        DisplayName: ResolveHoldingDisplayName(itemKey));
+
+static HoldingDeltaDto BuildShopPurchaseHoldingDelta(ShopItemDefinitionDto item) =>
+    item.ItemKey.Equals(FoodItemKey, StringComparison.OrdinalIgnoreCase)
+        ? BuildHoldingDelta(item.ItemKey, item.Effect.FoodDelta)
+        : BuildHoldingDelta(item.ItemKey, 1);
+
 static FightRewardResultDto BuildFightRewardResultDto(FightSettlementResult settlementResult) =>
     new(
         settlementResult.GoldReward,
@@ -1095,11 +1109,14 @@ static PlayerItemHoldingDto ToPlayerItemHoldingDto(PlayerItemHolding holding) =>
     new(
         holding.ItemKey,
         holding.Quantity,
-        holding.ItemKey.Equals(FoodItemKey, StringComparison.OrdinalIgnoreCase)
-            ? "Food"
-            : (holding.ItemKey.Equals(PotionItemKey, StringComparison.OrdinalIgnoreCase)
-                ? "Potion"
-                : holding.ItemKey));
+        ResolveHoldingDisplayName(holding.ItemKey));
+
+static string ResolveHoldingDisplayName(string itemKey) =>
+    itemKey.Equals(FoodItemKey, StringComparison.OrdinalIgnoreCase)
+        ? "Food"
+        : (itemKey.Equals(PotionItemKey, StringComparison.OrdinalIgnoreCase)
+            ? "Potion"
+            : itemKey);
 
 file sealed record EnemyTemplate(
     string Name,
