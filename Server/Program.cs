@@ -94,10 +94,7 @@ app.MapPost("/api/players", async (GameDbContext dbContext, CreatePlayerRequest 
 
     dbContext.Players.Add(player);
     await dbContext.SaveChangesAsync();
-    var foodHolding = await GetOrCreateFoodHoldingAsync(dbContext, player);
-    SyncFoodProjection(player, foodHolding);
-
-    var playerDto = ToPlayerDto(player);
+    var playerDto = await BuildPlayerDtoWithFoodProjectionAsync(dbContext, player);
     return Results.Created($"/api/players/{player.Id}", playerDto);
 });
 
@@ -109,7 +106,8 @@ app.MapGet("/api/players/{id:int}", async (GameDbContext dbContext, int id) =>
         return Results.NotFound();
     }
 
-    return Results.Ok(ToPlayerDto(player));
+    var playerDto = await BuildPlayerDtoWithFoodProjectionAsync(dbContext, player);
+    return Results.Ok(playerDto);
 });
 
 app.MapPost("/api/players/{id:int}/gold", async (GameDbContext dbContext, int id) =>
@@ -124,7 +122,8 @@ app.MapPost("/api/players/{id:int}/gold", async (GameDbContext dbContext, int id
     player.UpdatedAt = DateTime.UtcNow;
 
     await dbContext.SaveChangesAsync();
-    return Results.Ok(ToPlayerDto(player));
+    var playerDto = await BuildPlayerDtoWithFoodProjectionAsync(dbContext, player);
+    return Results.Ok(playerDto);
 });
 
 app.MapPost("/api/players/{id:int}/use-food", async (GameDbContext dbContext, int id) =>
@@ -149,13 +148,14 @@ app.MapPost("/api/players/{id:int}/use-food", async (GameDbContext dbContext, in
     player.UpdatedAt = DateTime.UtcNow;
 
     await dbContext.SaveChangesAsync();
+    var playerDto = await BuildPlayerDtoWithFoodProjectionAsync(dbContext, player);
     return Results.Ok(new UseFoodResultDto(
         ActionName: "Use Food",
         ResourceKey: "food",
         ConsumedAmount: UseFoodConsumedAmount,
         ResourcesDelta: BuildUseFoodResourcesDelta(UseFoodConsumedAmount),
         RecoveredHp: recoveredHp,
-        Player: ToPlayerDto(player)));
+        Player: playerDto));
 });
 
 app.MapPost("/api/players/{id:int}/buy-food", async (GameDbContext dbContext, int id) =>
@@ -185,7 +185,8 @@ app.MapPost("/api/players/{id:int}/preferred-enemy", async (GameDbContext dbCont
     player.UpdatedAt = DateTime.UtcNow;
 
     await dbContext.SaveChangesAsync();
-    return Results.Ok(ToPlayerDto(player));
+    var playerDto = await BuildPlayerDtoWithFoodProjectionAsync(dbContext, player);
+    return Results.Ok(playerDto);
 });
 
 app.MapPost("/api/players/{id:int}/power-strike", async (GameDbContext dbContext, int id, SetPowerStrikeRequest request) =>
@@ -200,7 +201,8 @@ app.MapPost("/api/players/{id:int}/power-strike", async (GameDbContext dbContext
     player.UpdatedAt = DateTime.UtcNow;
 
     await dbContext.SaveChangesAsync();
-    return Results.Ok(ToPlayerDto(player));
+    var playerDto = await BuildPlayerDtoWithFoodProjectionAsync(dbContext, player);
+    return Results.Ok(playerDto);
 });
 
 app.MapPost("/api/players/{id:int}/fight", async (GameDbContext dbContext, int id) =>
@@ -270,6 +272,7 @@ app.MapPost("/api/players/{id:int}/fight", async (GameDbContext dbContext, int i
         playerDamageDealt,
         enemyDamageDealt,
         enemyCurrentHp);
+    var playerDto = await BuildPlayerDtoWithFoodProjectionAsync(dbContext, player);
 
     return Results.Ok(new FightResultDto(
         enemyDefeated,
@@ -288,7 +291,7 @@ app.MapPost("/api/players/{id:int}/fight", async (GameDbContext dbContext, int i
         enemyDefeated,
         playerDefeated,
         summary,
-        ToPlayerDto(player)));
+        playerDto));
 });
 
 app.Run();
@@ -489,7 +492,7 @@ static void EnsurePlayerSchema(GameDbContext dbContext)
 
 static void EnsurePlayerItemHoldingsSchema(GameDbContext dbContext)
 {
-    var existingTables = GetTableNames(dbContext);
+    var existingTables = GetSqliteTableNames(dbContext);
     if (!existingTables.Contains(PlayerItemHoldingsTableName))
     {
         dbContext.Database.ExecuteSqlRaw($@"
@@ -506,7 +509,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS ""IX_{PlayerItemHoldingsTableName}_PlayerId_It
 ON ""{PlayerItemHoldingsTableName}"" (""PlayerId"", ""ItemKey"");");
 }
 
-static HashSet<string> GetTableNames(GameDbContext dbContext)
+static HashSet<string> GetSqliteTableNames(GameDbContext dbContext)
 {
     var connection = dbContext.Database.GetDbConnection();
     var shouldClose = connection.State != ConnectionState.Open;
@@ -647,13 +650,14 @@ static async Task<IResult> BuyShopItemAsync(
     await ApplyFoodShopEffectAsync(dbContext, player, item.Effect);
 
     await dbContext.SaveChangesAsync();
+    var playerDto = await BuildPlayerDtoWithFoodProjectionAsync(dbContext, player);
     return Results.Ok(new ShopPurchaseResultDto(
         item.ItemKey,
         item.DisplayName,
         item.GoldPrice,
         BuildShopPurchaseResourcesDelta(item),
         item.Effect,
-        ToPlayerDto(player)));
+        playerDto));
 }
 
 static bool TryGetShopItemDefinition(
@@ -958,7 +962,7 @@ static async Task<PlayerItemHolding> GetOrCreateFoodHoldingAsync(
     {
         PlayerId = player.Id,
         ItemKey = FoodItemKey,
-        // Defensive migration clamp for pre-step50 rows that may contain unexpected legacy values.
+        // Migration bridge: seed first food holding from legacy Player.Food when transitioning existing players.
         Quantity = Math.Max(0, player.Food)
     };
     dbContext.PlayerItemHoldings.Add(newHolding);
@@ -971,7 +975,7 @@ static void UpdateItemHoldingQuantityInMemory(PlayerItemHolding holding, int qua
     var nextQuantity = holding.Quantity + quantityDelta;
     if (nextQuantity < 0)
     {
-        throw new InvalidOperationException($"Item holding quantity cannot be negative. playerId={holding.PlayerId}, itemKey={holding.ItemKey}");
+        throw new InvalidOperationException($"Item holding quantity cannot be negative. AttemptedQuantity={nextQuantity}, Delta={quantityDelta}, PlayerId={holding.PlayerId}, ItemKey={holding.ItemKey}");
     }
 
     holding.Quantity = nextQuantity;
@@ -980,6 +984,13 @@ static void UpdateItemHoldingQuantityInMemory(PlayerItemHolding holding, int qua
 static void SyncFoodProjection(Player player, PlayerItemHolding foodHolding)
 {
     player.Food = foodHolding.Quantity;
+}
+
+static async Task<PlayerDto> BuildPlayerDtoWithFoodProjectionAsync(GameDbContext dbContext, Player player)
+{
+    var foodHolding = await GetOrCreateFoodHoldingAsync(dbContext, player);
+    SyncFoodProjection(player, foodHolding);
+    return ToPlayerDto(player);
 }
 
 file sealed record EnemyTemplate(
