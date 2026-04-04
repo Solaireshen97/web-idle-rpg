@@ -64,6 +64,27 @@ app.MapGet("/api/players/{id:int}", async (IHttpClientFactory httpClientFactory,
         : Results.Ok(player);
 });
 
+app.MapGet("/api/players/{id:int}/holdings", async (IHttpClientFactory httpClientFactory, int id) =>
+{
+    var serverApi = httpClientFactory.CreateClient("ServerApi");
+    var response = await serverApi.GetAsync($"/api/players/{id}/holdings");
+
+    if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+    {
+        return Results.NotFound();
+    }
+
+    if (!response.IsSuccessStatusCode)
+    {
+        return await ForwardResponseAsContentAsync(response);
+    }
+
+    var holdings = await response.Content.ReadFromJsonAsync<PlayerItemHoldingDto[]>();
+    return holdings is null
+        ? Results.StatusCode(StatusCodes.Status502BadGateway)
+        : Results.Ok(holdings);
+});
+
 app.MapGet("/api/shop/items", async (IHttpClientFactory httpClientFactory) =>
 {
     var serverApi = httpClientFactory.CreateClient("ServerApi");

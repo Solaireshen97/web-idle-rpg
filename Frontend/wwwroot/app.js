@@ -28,6 +28,7 @@ const powerStrikeStatusElement = document.getElementById("powerStrikeStatus");
 const preferredEnemySelect = document.getElementById("preferredEnemySelect");
 const preferredEnemyStatusElement = document.getElementById("preferredEnemyStatus");
 const shopItemsContainerElement = document.getElementById("shopItemsContainer");
+const playerHoldingsContainerElement = document.getElementById("playerHoldingsContainer");
 const defaultAutoUseFoodThresholdPercent = 50;
 const defaultPreferredEnemyKey = "random";
 const defaultPowerStrikeEnabled = true;
@@ -224,6 +225,43 @@ function showCurrentEnemy(player) {
   currentEnemyAttackElement.textContent = player.currentEnemyAttack;
 }
 
+function formatHoldingRow(holding) {
+  const displayName = typeof holding?.displayName === "string" && holding.displayName.trim().length > 0
+    ? holding.displayName.trim()
+    : (typeof holding?.itemKey === "string" && holding.itemKey.trim().length > 0 ? holding.itemKey.trim() : "item");
+  const quantity = Number.isFinite(holding?.quantity) ? holding.quantity : 0;
+  return `${displayName} x ${quantity}`;
+}
+
+function showHoldings(holdings) {
+  if (!Array.isArray(holdings) || holdings.length <= 0) {
+    playerHoldingsContainerElement.textContent = "No holdings.";
+    return;
+  }
+
+  playerHoldingsContainerElement.innerHTML = holdings
+    .map(formatHoldingRow)
+    .map(row => `<div>${row}</div>`)
+    .join("");
+}
+
+async function loadHoldings(playerId) {
+  if (!Number.isFinite(playerId)) {
+    showHoldings([]);
+    return;
+  }
+
+  const response = await fetch(`/api/players/${encodeURIComponent(playerId)}/holdings`);
+  if (!response.ok) {
+    showHoldings([]);
+    return;
+  }
+
+  const text = await response.text();
+  const holdings = JSON.parse(text);
+  showHoldings(holdings);
+}
+
 async function loadPlayer() {
   stopAutoFight();
   const id = playerIdInput.value;
@@ -241,6 +279,7 @@ async function loadPlayer() {
   const player = JSON.parse(text);
   showPlayerStatus(player);
   showCurrentEnemy(player);
+  await loadHoldings(player.id);
   writeLastResultMessages([`Load Player success: ${player.name} (ID ${player.id}).`]);
   showResult(player);
 }
@@ -267,6 +306,7 @@ async function createPlayer() {
   playerIdInput.value = player.id;
   showPlayerStatus(player);
   showCurrentEnemy(player);
+  await loadHoldings(player.id);
   writeLastResultMessages([`Create Player success: ${player.name} (ID ${player.id}).`]);
   showResult(player);
 }
@@ -289,6 +329,7 @@ async function addGold() {
   const player = JSON.parse(text);
   showPlayerStatus(player);
   showCurrentEnemy(player);
+  await loadHoldings(player.id);
   writeLastResultMessages([`Add Gold success: +10 Gold (Current: ${player.gold}).`]);
   showResult(player);
 }
@@ -448,6 +489,7 @@ async function fight(options = {}) {
   const fightResult = JSON.parse(text);
   showPlayerStatus(fightResult.player);
   showCurrentEnemy(fightResult.player);
+  await loadHoldings(fightResult?.player?.id);
   const messages = [buildFightMessage(fightResult)];
   if (fightResult.playerDefeated && autoFightTimerId !== null) {
     stopAutoFight();
@@ -496,6 +538,7 @@ async function useFood(options = {}) {
   const player = useFoodResult.player;
   showPlayerStatus(player);
   showCurrentEnemy(player);
+  await loadHoldings(player?.id);
   const foodMessage = formatUseFoodResultSummary(useFoodResult, source);
 
   if (writeLastResult) {
@@ -538,9 +581,11 @@ async function buyShopItem(itemKey) {
   if (player) {
     showPlayerStatus(player);
     showCurrentEnemy(player);
+    await loadHoldings(player.id);
   } else {
     showPlayerStatus(null);
     showCurrentEnemy(null);
+    showHoldings([]);
   }
 
   writeLastResultMessages([formatShopPurchaseResultSummary(purchaseResult)]);
@@ -579,6 +624,7 @@ async function setPreferredEnemy() {
   const preferredEnemyName = getPreferredEnemyDisplayName(player.preferredEnemyKey);
   showPlayerStatus(player);
   showCurrentEnemy(player);
+  await loadHoldings(player.id);
   writeLastResultMessages([`Preferred Enemy updated: ${preferredEnemyName}.`]);
   showResult(player);
 }
@@ -604,6 +650,7 @@ async function setPowerStrikeEnabled() {
   const player = JSON.parse(text);
   showPlayerStatus(player);
   showCurrentEnemy(player);
+  await loadHoldings(player.id);
   writeLastResultMessages([`Power Strike ${player.powerStrikeEnabled ? "enabled" : "disabled"}.`]);
   showResult(player);
 }
@@ -736,3 +783,4 @@ setAutoUseFoodStatus();
 loadShopItems();
 syncPreferredEnemyUi(null);
 syncPowerStrikeUi(null);
+showHoldings([]);
