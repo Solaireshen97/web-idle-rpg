@@ -43,22 +43,30 @@ var shopItems = new[]
         ItemKey: "food",
         DisplayName: "Food",
         GoldPrice: 5,
-        Effect: new ShopItemEffectDto(FoodDelta: 1, HpRecover: FoodHealAmount)),
+        Effect: new ShopItemEffectDto(FoodDelta: 1, HpRecover: FoodHealAmount),
+        ConsumableUse: new ConsumableUseMetadataDto(
+            ConsumedAmount: UseFoodConsumedAmount,
+            HpRecover: FoodHealAmount)),
     new ShopItemDefinitionDto(
         ItemKey: "food-pack",
         DisplayName: "Food Pack",
         GoldPrice: 12,
-        Effect: new ShopItemEffectDto(FoodDelta: 3, HpRecover: FoodHealAmount)),
+        Effect: new ShopItemEffectDto(FoodDelta: 3, HpRecover: FoodHealAmount),
+        ConsumableUse: null),
     new ShopItemDefinitionDto(
         ItemKey: "food-crate",
         DisplayName: "Food Crate",
         GoldPrice: 18,
-        Effect: new ShopItemEffectDto(FoodDelta: 5, HpRecover: FoodHealAmount)),
+        Effect: new ShopItemEffectDto(FoodDelta: 5, HpRecover: FoodHealAmount),
+        ConsumableUse: null),
     new ShopItemDefinitionDto(
         ItemKey: PotionItemKey,
         DisplayName: "Potion",
         GoldPrice: 10,
-        Effect: new ShopItemEffectDto(FoodDelta: 0, HpRecover: PotionHealAmount))
+        Effect: new ShopItemEffectDto(FoodDelta: 0, HpRecover: PotionHealAmount),
+        ConsumableUse: new ConsumableUseMetadataDto(
+            ConsumedAmount: 1,
+            HpRecover: PotionHealAmount))
 };
 var shopItemByKey = shopItems.ToDictionary(item => item.ItemKey, StringComparer.OrdinalIgnoreCase);
 
@@ -192,7 +200,7 @@ app.MapPost("/api/players/{id:int}/use-item/{itemKey}", async (GameDbContext dbC
         return Results.NotFound(new { message = "Consumable item not found." });
     }
 
-    if (!item.ItemKey.Equals(PotionItemKey, StringComparison.OrdinalIgnoreCase))
+    if (!TryGetConsumableUseMetadata(item, out var consumableUse))
     {
         return Results.BadRequest(new { message = "Item is not a supported consumable action." });
     }
@@ -203,11 +211,11 @@ app.MapPost("/api/players/{id:int}/use-item/{itemKey}", async (GameDbContext dbC
         return Results.BadRequest(new { message = $"Not enough {item.ItemKey}." });
     }
 
-    const int consumedAmount = 1;
+    var consumedAmount = consumableUse.ConsumedAmount;
     var hpBeforeUseItem = player.CurrentHp;
     UpdateItemHoldingQuantityInMemory(holding, -consumedAmount);
     await SyncFoodProjectionFromHoldingAsync(dbContext, player);
-    player.CurrentHp = Math.Min(player.MaxHp, player.CurrentHp + item.Effect.HpRecover);
+    player.CurrentHp = Math.Min(player.MaxHp, player.CurrentHp + consumableUse.HpRecover);
     var recoveredHp = Math.Max(0, player.CurrentHp - hpBeforeUseItem);
     player.UpdatedAt = DateTime.UtcNow;
 
@@ -738,6 +746,29 @@ static bool TryGetShopItemDefinition(
     }
 
     return shopItemByKey.TryGetValue(itemKey, out item!);
+}
+
+static bool TryGetConsumableUseMetadata(
+    ShopItemDefinitionDto item,
+    out ConsumableUseMetadataDto consumableUse)
+{
+    consumableUse = item.ConsumableUse ?? new ConsumableUseMetadataDto(ConsumedAmount: 0, HpRecover: 0);
+    if (item.ConsumableUse is null)
+    {
+        return false;
+    }
+
+    if (consumableUse.ConsumedAmount <= 0)
+    {
+        return false;
+    }
+
+    if (consumableUse.HpRecover < 0)
+    {
+        return false;
+    }
+
+    return true;
 }
 
 static bool CanAffordShopItem(Player player, ShopItemDefinitionDto item, out string message)

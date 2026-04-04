@@ -37,7 +37,8 @@ const defaultShopItem = {
   itemKey: "food",
   displayName: "Food",
   goldPrice: 5,
-  effect: { foodDelta: 1 }
+  effect: { foodDelta: 1 },
+  consumableUse: { consumedAmount: 1, hpRecover: 10 }
 };
 const defaultShopItems = [defaultShopItem];
 let autoFightTimerId = null;
@@ -117,6 +118,32 @@ function isPureHpRecoverShopItem(shopItem) {
   return hpRecover > 0 && foodDelta <= 0;
 }
 
+function resolveConsumableUseMetadata(shopItem) {
+  const consumedAmount = Number.isFinite(shopItem?.consumableUse?.consumedAmount) && shopItem.consumableUse.consumedAmount > 0
+    ? shopItem.consumableUse.consumedAmount
+    : 0;
+  const hpRecover = Number.isFinite(shopItem?.consumableUse?.hpRecover) && shopItem.consumableUse.hpRecover >= 0
+    ? shopItem.consumableUse.hpRecover
+    : 0;
+  return { consumedAmount, hpRecover };
+}
+
+function isManuallyConsumableShopItem(shopItem) {
+  const consumableUse = resolveConsumableUseMetadata(shopItem);
+  return consumableUse.consumedAmount > 0 && consumableUse.hpRecover > 0;
+}
+
+function getManualConsumableItemKeyByDisplayName(displayName) {
+  const normalizedDisplayName = typeof displayName === "string" ? displayName.trim().toLowerCase() : "";
+  const match = currentShopItems.find(item =>
+    isManuallyConsumableShopItem(item)
+    && item.itemKey !== "food"
+    && (typeof item.displayName === "string" ? item.displayName.trim().toLowerCase() : "") === normalizedDisplayName);
+  return typeof match?.itemKey === "string" && match.itemKey.trim().length > 0
+    ? match.itemKey.trim().toLowerCase()
+    : null;
+}
+
 function formatShopPurchaseResultSummary(purchaseResult) {
   const player = purchaseResult?.player ?? null;
   const displayName = typeof purchaseResult?.displayName === "string" && purchaseResult.displayName.trim().length > 0
@@ -183,12 +210,22 @@ function normalizeShopItem(rawItem) {
   const hpRecover = Number.isFinite(rawItem?.effect?.hpRecover) && rawItem.effect.hpRecover >= 0
     ? rawItem.effect.hpRecover
     : 0;
+  const consumableUseConsumedAmount = Number.isFinite(rawItem?.consumableUse?.consumedAmount) && rawItem.consumableUse.consumedAmount > 0
+    ? rawItem.consumableUse.consumedAmount
+    : 0;
+  const consumableUseHpRecover = Number.isFinite(rawItem?.consumableUse?.hpRecover) && rawItem.consumableUse.hpRecover >= 0
+    ? rawItem.consumableUse.hpRecover
+    : 0;
 
   return {
     itemKey,
     displayName,
     goldPrice,
-    effect: { foodDelta, hpRecover }
+    effect: { foodDelta, hpRecover },
+    consumableUse: {
+      consumedAmount: consumableUseConsumedAmount,
+      hpRecover: consumableUseHpRecover
+    }
   };
 }
 
@@ -895,7 +932,10 @@ document.getElementById("createPlayerButton").addEventListener("click", createPl
 document.getElementById("addGoldButton").addEventListener("click", addGold);
 document.getElementById("fightButton").addEventListener("click", fight);
 document.getElementById("useFoodButton").addEventListener("click", useFood);
-document.getElementById("usePotionButton").addEventListener("click", () => useItem("potion"));
+document.getElementById("usePotionButton").addEventListener("click", () => {
+  const potionItemKey = getManualConsumableItemKeyByDisplayName("Potion") ?? "potion";
+  useItem(potionItemKey);
+});
 shopItemsContainerElement.addEventListener("click", event => {
   const target = event.target;
   if (!(target instanceof HTMLElement)) {
