@@ -20,6 +20,8 @@ const string BasicAttackSkillName = "Basic Attack";
 const string EnemyJabActionName = "Enemy Jab";
 const string EnemyAttackActionName = "Enemy Attack";
 const string PlayersTableName = "Players";
+const string PlayerItemHoldingsTableName = "PlayerItemHoldings";
+const string FoodItemKey = "food";
 const string PreferredEnemyRandomKey = "random";
 const string PreferredEnemyTrainingSlimeKey = "training-slime";
 const string PreferredEnemyWolfKey = "wolf";
@@ -69,6 +71,7 @@ using (var scope = app.Services.CreateScope())
     var dbContext = scope.ServiceProvider.GetRequiredService<GameDbContext>();
     dbContext.Database.EnsureCreated();
     EnsurePlayerSchema(dbContext);
+    EnsurePlayerItemHoldingsSchema(dbContext);
 }
 
 app.MapGet("/api/ping", () => Results.Ok(new { message = "pong" }));
@@ -91,6 +94,8 @@ app.MapPost("/api/players", async (GameDbContext dbContext, CreatePlayerRequest 
 
     dbContext.Players.Add(player);
     await dbContext.SaveChangesAsync();
+    var foodHolding = await GetOrCreateFoodHoldingAsync(dbContext, player);
+    SyncFoodProjection(player, foodHolding);
 
     var playerDto = ToPlayerDto(player);
     return Results.Created($"/api/players/{player.Id}", playerDto);
@@ -99,7 +104,12 @@ app.MapPost("/api/players", async (GameDbContext dbContext, CreatePlayerRequest 
 app.MapGet("/api/players/{id:int}", async (GameDbContext dbContext, int id) =>
 {
     var player = await dbContext.Players.FindAsync(id);
-    return player is null ? Results.NotFound() : Results.Ok(ToPlayerDto(player));
+    if (player is null)
+    {
+        return Results.NotFound();
+    }
+
+    return Results.Ok(ToPlayerDto(player));
 });
 
 app.MapPost("/api/players/{id:int}/gold", async (GameDbContext dbContext, int id) =>
@@ -125,13 +135,15 @@ app.MapPost("/api/players/{id:int}/use-food", async (GameDbContext dbContext, in
         return Results.NotFound();
     }
 
-    if (player.Food <= 0)
+    var foodHolding = await GetOrCreateFoodHoldingAsync(dbContext, player);
+    if (foodHolding.Quantity <= 0)
     {
         return Results.BadRequest(new { message = "Not enough food." });
     }
 
     var hpBeforeUseFood = player.CurrentHp;
-    player.Food -= UseFoodConsumedAmount;
+    UpdateItemHoldingQuantityInMemory(foodHolding, -UseFoodConsumedAmount);
+    SyncFoodProjection(player, foodHolding);
     player.CurrentHp = Math.Min(player.MaxHp, player.CurrentHp + FoodHealAmount);
     var recoveredHp = Math.Max(0, player.CurrentHp - hpBeforeUseFood);
     player.UpdatedAt = DateTime.UtcNow;
@@ -237,7 +249,8 @@ app.MapPost("/api/players/{id:int}/fight", async (GameDbContext dbContext, int i
     }
 
     var playerDefeated = playerCurrentHp <= 0;
-    var settlementResult = ApplyFightRoundSettlement(
+    var settlementResult = await ApplyFightRoundSettlementAsync(
+        dbContext,
         player,
         enemy,
         enemyCurrentHp,
@@ -350,7 +363,8 @@ static void ClearCurrentEnemy(Player player)
 static int GetRequiredExpForNextLevel(int currentLevel) =>
     BaseExpPerLevel + (currentLevel - 1) * ExpPerLevelGrowth;
 
-static FightSettlementResult ApplyFightRoundSettlement(
+static async Task<FightSettlementResult> ApplyFightRoundSettlementAsync(
+    GameDbContext dbContext,
     Player player,
     CurrentEnemyState enemy,
     int enemyCurrentHp,
@@ -360,7 +374,7 @@ static FightSettlementResult ApplyFightRoundSettlement(
 {
     if (enemyDefeated)
     {
-        var enemyDefeatSettlementResult = ApplyEnemyDefeatSettlement(player, enemy, playerCurrentHp);
+        var enemyDefeatSettlementResult = await ApplyEnemyDefeatSettlementAsync(dbContext, player, enemy, playerCurrentHp);
         ClearCurrentEnemy(player);
         return new FightSettlementResult(
             FightSettlementBranch.EnemyDefeated,
@@ -392,7 +406,8 @@ static FightSettlementResult ApplyFightRoundSettlement(
         false);
 }
 
-static EnemyDefeatSettlementResult ApplyEnemyDefeatSettlement(
+static async Task<EnemyDefeatSettlementResult> ApplyEnemyDefeatSettlementAsync(
+    GameDbContext dbContext,
     Player player,
     CurrentEnemyState enemy,
     int playerCurrentHp)
@@ -401,7 +416,9 @@ static EnemyDefeatSettlementResult ApplyEnemyDefeatSettlement(
     var expReward = enemy.ExperienceReward;
     player.Gold += goldReward;
     player.Experience += expReward;
-    player.Food += FoodRewardPerEnemyDefeat;
+    var foodHolding = await GetOrCreateFoodHoldingAsync(dbContext, player);
+    UpdateItemHoldingQuantityInMemory(foodHolding, FoodRewardPerEnemyDefeat);
+    SyncFoodProjection(player, foodHolding);
     player.CurrentHp = Math.Max(0, playerCurrentHp);
 
     var levelUpHpRecovery = 0;
@@ -468,6 +485,56 @@ static void EnsurePlayerSchema(GameDbContext dbContext)
     AddPlayerColumnIfMissing(dbContext, existingColumns, "PreferredEnemyKey");
     AddPlayerColumnIfMissing(dbContext, existingColumns, "PowerStrikeEnabled");
     AddPlayerColumnIfMissing(dbContext, existingColumns, "PowerStrikeCooldownRemaining");
+}
+
+static void EnsurePlayerItemHoldingsSchema(GameDbContext dbContext)
+{
+    var existingTables = GetTableNames(dbContext);
+    if (!existingTables.Contains(PlayerItemHoldingsTableName))
+    {
+        dbContext.Database.ExecuteSqlRaw($@"
+CREATE TABLE ""{PlayerItemHoldingsTableName}"" (
+    ""Id"" INTEGER NOT NULL CONSTRAINT ""PK_{PlayerItemHoldingsTableName}"" PRIMARY KEY AUTOINCREMENT,
+    ""PlayerId"" INTEGER NOT NULL,
+    ""ItemKey"" TEXT NOT NULL,
+    ""Quantity"" INTEGER NOT NULL
+);");
+    }
+
+    dbContext.Database.ExecuteSqlRaw($@"
+CREATE UNIQUE INDEX IF NOT EXISTS ""IX_{PlayerItemHoldingsTableName}_PlayerId_ItemKey""
+ON ""{PlayerItemHoldingsTableName}"" (""PlayerId"", ""ItemKey"");");
+}
+
+static HashSet<string> GetTableNames(GameDbContext dbContext)
+{
+    var connection = dbContext.Database.GetDbConnection();
+    var shouldClose = connection.State != ConnectionState.Open;
+    if (shouldClose)
+    {
+        connection.Open();
+    }
+
+    try
+    {
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT name FROM sqlite_master WHERE type = 'table'";
+        using var reader = command.ExecuteReader();
+        var tableNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        while (reader.Read())
+        {
+            tableNames.Add(reader.GetString(0));
+        }
+
+        return tableNames;
+    }
+    finally
+    {
+        if (shouldClose)
+        {
+            connection.Close();
+        }
+    }
 }
 
 static HashSet<string> GetPlayerColumnNames(GameDbContext dbContext)
@@ -577,6 +644,7 @@ static async Task<IResult> BuyShopItemAsync(
     }
 
     ApplyShopPurchase(player, item);
+    await ApplyFoodShopEffectAsync(dbContext, player, item.Effect);
 
     await dbContext.SaveChangesAsync();
     return Results.Ok(new ShopPurchaseResultDto(
@@ -617,13 +685,17 @@ static bool CanAffordShopItem(Player player, ShopItemDefinitionDto item, out str
 static void ApplyShopPurchase(Player player, ShopItemDefinitionDto item)
 {
     player.Gold -= item.GoldPrice;
-    ApplyShopItemEffect(player, item.Effect);
     player.UpdatedAt = DateTime.UtcNow;
 }
 
-static void ApplyShopItemEffect(Player player, ShopItemEffectDto effect)
+static async Task ApplyFoodShopEffectAsync(
+    GameDbContext dbContext,
+    Player player,
+    ShopItemEffectDto effect)
 {
-    player.Food += effect.FoodDelta;
+    var foodHolding = await GetOrCreateFoodHoldingAsync(dbContext, player);
+    UpdateItemHoldingQuantityInMemory(foodHolding, effect.FoodDelta);
+    SyncFoodProjection(player, foodHolding);
 }
 
 static bool TryGetPreferredEnemyKey(string? preferredEnemyKey, out string normalizedKey)
@@ -868,6 +940,47 @@ static FightRewardResultDto BuildFightRewardResultDto(FightSettlementResult sett
             goldDelta: settlementResult.GoldReward,
             experienceDelta: settlementResult.ExpReward,
             foodDelta: settlementResult.FoodReward));
+
+static async Task<PlayerItemHolding> GetOrCreateFoodHoldingAsync(
+    GameDbContext dbContext,
+    Player player)
+{
+    var existingHolding = await dbContext.PlayerItemHoldings
+        .FirstOrDefaultAsync(holding =>
+            holding.PlayerId == player.Id
+            && holding.ItemKey == FoodItemKey);
+    if (existingHolding is not null)
+    {
+        return existingHolding;
+    }
+
+    var newHolding = new PlayerItemHolding
+    {
+        PlayerId = player.Id,
+        ItemKey = FoodItemKey,
+        // Defensive migration clamp for pre-step50 rows that may contain unexpected legacy values.
+        Quantity = Math.Max(0, player.Food)
+    };
+    dbContext.PlayerItemHoldings.Add(newHolding);
+    await dbContext.SaveChangesAsync();
+    return newHolding;
+}
+
+static void UpdateItemHoldingQuantityInMemory(PlayerItemHolding holding, int quantityDelta)
+{
+    var nextQuantity = holding.Quantity + quantityDelta;
+    if (nextQuantity < 0)
+    {
+        throw new InvalidOperationException($"Item holding quantity cannot be negative. playerId={holding.PlayerId}, itemKey={holding.ItemKey}");
+    }
+
+    holding.Quantity = nextQuantity;
+}
+
+static void SyncFoodProjection(Player player, PlayerItemHolding foodHolding)
+{
+    player.Food = foodHolding.Quantity;
+}
 
 file sealed record EnemyTemplate(
     string Name,
