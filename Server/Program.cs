@@ -28,6 +28,12 @@ const string PreferredEnemyRandomKey = "random";
 const string PreferredEnemyTrainingSlimeKey = "training-slime";
 const string PreferredEnemyWolfKey = "wolf";
 const string PreferredEnemyGoblinKey = "goblin";
+const string AreaElwynnForestKey = "elwynn-forest";
+const string AreaWestfallKey = "westfall";
+const string EncounterTypeNormal = "normal";
+const string EncounterTypeDungeon = "dungeon";
+const int NormalEncounterSingleWaveIndex = 1;
+const int NormalEncounterSingleWaveTotal = 1;
 
 var enemyTemplateByKey = new Dictionary<string, EnemyTemplate>(StringComparer.OrdinalIgnoreCase)
 {
@@ -37,6 +43,25 @@ var enemyTemplateByKey = new Dictionary<string, EnemyTemplate>(StringComparer.Or
 };
 
 var enemyTemplates = enemyTemplateByKey.Values.ToArray();
+var areaDefinitions = new[]
+{
+    new AreaDefinitionDto(
+        AreaKey: AreaElwynnForestKey,
+        DisplayName: "Elwynn Forest",
+        UnlockLevel: 1,
+        IsStartingArea: true,
+        NormalEnemyKeys: new[] { PreferredEnemyTrainingSlimeKey, PreferredEnemyWolfKey },
+        DungeonKeys: new[] { "elwynn-forest-training-grounds" }),
+    new AreaDefinitionDto(
+        AreaKey: AreaWestfallKey,
+        DisplayName: "Westfall",
+        UnlockLevel: 10,
+        IsStartingArea: false,
+        NormalEnemyKeys: new[] { PreferredEnemyWolfKey, PreferredEnemyGoblinKey },
+        DungeonKeys: new[] { "westfall-abandoned-mine" })
+};
+var areaByKey = areaDefinitions.ToDictionary(area => area.AreaKey, StringComparer.OrdinalIgnoreCase);
+var startingArea = areaDefinitions.First(area => area.IsStartingArea);
 var shopItems = new[]
 {
     new ShopItemDefinitionDto(
@@ -93,6 +118,7 @@ app.MapGet("/api/ping", () => Results.Ok(new { message = "pong" }));
 
 app.MapGet("/api/shop/items", () => Results.Ok(shopItems));
 app.MapGet("/api/shop/items/food", () => Results.Ok(shopItemByKey["food"]));
+app.MapGet("/api/areas", () => Results.Ok(areaDefinitions));
 
 app.MapPost("/api/players", async (GameDbContext dbContext, CreatePlayerRequest request) =>
 {
@@ -218,6 +244,34 @@ app.MapPost("/api/players/{id:int}/preferred-enemy", async (GameDbContext dbCont
     return Results.Ok(playerDto);
 });
 
+app.MapPost("/api/players/{id:int}/current-area", async (GameDbContext dbContext, int id, SetCurrentAreaRequest request) =>
+{
+    var player = await dbContext.Players.FindAsync(id);
+    if (player is null)
+    {
+        return Results.NotFound();
+    }
+
+    if (!TryGetAreaDefinition(areaByKey, request.AreaKey, out var area))
+    {
+        return Results.BadRequest(new { message = "Invalid areaKey." });
+    }
+
+    if (player.Level < area.UnlockLevel)
+    {
+        return Results.BadRequest(new { message = $"Area '{area.DisplayName}' unlocks at level {area.UnlockLevel}." });
+    }
+
+    player.CurrentAreaKey = area.AreaKey;
+    ClearCurrentEncounter(player);
+    ClearCurrentEnemy(player);
+    player.UpdatedAt = DateTime.UtcNow;
+
+    await dbContext.SaveChangesAsync();
+    var playerDto = await BuildPlayerDtoWithFoodProjectionAsync(dbContext, player);
+    return Results.Ok(playerDto);
+});
+
 app.MapPost("/api/players/{id:int}/power-strike", async (GameDbContext dbContext, int id, SetPowerStrikeRequest request) =>
 {
     var player = await dbContext.Players.FindAsync(id);
@@ -242,12 +296,8 @@ app.MapPost("/api/players/{id:int}/fight", async (GameDbContext dbContext, int i
         return Results.NotFound();
     }
 
-    if (!HasCurrentEnemy(player))
-    {
-        var preferredEnemyKey = NormalizePreferredEnemyKey(player.PreferredEnemyKey);
-        var enemyTemplate = GetEnemyTemplateForNewFight(preferredEnemyKey, enemyTemplateByKey, enemyTemplates);
-        AssignCurrentEnemy(player, enemyTemplate);
-    }
+    EnsurePlayerCurrentArea(player, areaByKey, startingArea);
+    EnsureNormalEncounterAndEnemyForFight(player, areaByKey, enemyTemplateByKey, enemyTemplates, startingArea);
 
     var enemy = GetCurrentEnemyState(player);
 
@@ -342,6 +392,9 @@ static PlayerDto ToPlayerDto(Player player) =>
         player.CurrentEnemyAttack,
         player.CurrentEnemyGoldReward,
         player.CurrentEnemyExperienceReward,
+        ResolveCurrentAreaKey(player),
+        ResolveAreaDisplayNameByKey(ResolveCurrentAreaKey(player)),
+        BuildCurrentEncounterMetadata(player),
         NormalizePreferredEnemyKey(player.PreferredEnemyKey),
         player.PowerStrikeEnabled,
         Math.Max(0, player.PowerStrikeCooldownRemaining),
@@ -392,6 +445,70 @@ static void ClearCurrentEnemy(Player player)
     player.CurrentEnemyExperienceReward = null;
 }
 
+static void AssignCurrentEncounter(
+    Player player,
+    string encounterType,
+    string encounterKey,
+    string encounterName,
+    int waveIndex,
+    int totalWaves)
+{
+    player.CurrentEncounterType = encounterType;
+    player.CurrentEncounterKey = encounterKey;
+    player.CurrentEncounterName = encounterName;
+    player.CurrentEncounterWaveIndex = waveIndex;
+    player.CurrentEncounterTotalWaves = totalWaves;
+}
+
+static void ClearCurrentEncounter(Player player)
+{
+    player.CurrentEncounterType = null;
+    player.CurrentEncounterKey = null;
+    player.CurrentEncounterName = null;
+    player.CurrentEncounterWaveIndex = null;
+    player.CurrentEncounterTotalWaves = null;
+}
+
+static bool HasCurrentEncounter(Player player) =>
+    !string.IsNullOrWhiteSpace(player.CurrentEncounterType)
+    && !string.IsNullOrWhiteSpace(player.CurrentEncounterKey)
+    && !string.IsNullOrWhiteSpace(player.CurrentEncounterName)
+    && player.CurrentEncounterWaveIndex.HasValue
+    && player.CurrentEncounterTotalWaves.HasValue;
+
+static string ResolveCurrentAreaKey(Player player)
+{
+    if (string.IsNullOrWhiteSpace(player.CurrentAreaKey))
+    {
+        return AreaElwynnForestKey;
+    }
+
+    return player.CurrentAreaKey.Trim().ToLowerInvariant();
+}
+
+static string ResolveAreaDisplayNameByKey(string areaKey) =>
+    areaKey switch
+    {
+        AreaWestfallKey => "Westfall",
+        _ => "Elwynn Forest"
+    };
+
+static EncounterMetadataDto? BuildCurrentEncounterMetadata(Player player)
+{
+    if (!HasCurrentEncounter(player))
+    {
+        return null;
+    }
+
+    return new EncounterMetadataDto(
+        IsActive: true,
+        EncounterType: player.CurrentEncounterType!,
+        EncounterKey: player.CurrentEncounterKey!,
+        EncounterName: player.CurrentEncounterName!,
+        WaveIndex: Math.Max(1, player.CurrentEncounterWaveIndex!.Value),
+        TotalWaves: Math.Max(1, player.CurrentEncounterTotalWaves!.Value));
+}
+
 static int GetRequiredExpForNextLevel(int currentLevel) =>
     BaseExpPerLevel + (currentLevel - 1) * ExpPerLevelGrowth;
 
@@ -407,6 +524,7 @@ static async Task<FightSettlementResult> ApplyFightRoundSettlementAsync(
     if (enemyDefeated)
     {
         var enemyDefeatSettlementResult = await ApplyEnemyDefeatSettlementAsync(dbContext, player, enemy, playerCurrentHp);
+        ClearCurrentEncounter(player);
         ClearCurrentEnemy(player);
         return new FightSettlementResult(
             FightSettlementBranch.EnemyDefeated,
@@ -419,6 +537,7 @@ static async Task<FightSettlementResult> ApplyFightRoundSettlementAsync(
     if (playerDefeated)
     {
         player.CurrentHp = DefeatSurvivalHp;
+        ClearCurrentEncounter(player);
         ClearCurrentEnemy(player);
         return new FightSettlementResult(
             FightSettlementBranch.PlayerDefeated,
@@ -514,6 +633,12 @@ static void EnsurePlayerSchema(GameDbContext dbContext)
     AddPlayerColumnIfMissing(dbContext, existingColumns, "CurrentEnemyAttack");
     AddPlayerColumnIfMissing(dbContext, existingColumns, "CurrentEnemyGoldReward");
     AddPlayerColumnIfMissing(dbContext, existingColumns, "CurrentEnemyExperienceReward");
+    AddPlayerColumnIfMissing(dbContext, existingColumns, "CurrentAreaKey");
+    AddPlayerColumnIfMissing(dbContext, existingColumns, "CurrentEncounterType");
+    AddPlayerColumnIfMissing(dbContext, existingColumns, "CurrentEncounterKey");
+    AddPlayerColumnIfMissing(dbContext, existingColumns, "CurrentEncounterName");
+    AddPlayerColumnIfMissing(dbContext, existingColumns, "CurrentEncounterWaveIndex");
+    AddPlayerColumnIfMissing(dbContext, existingColumns, "CurrentEncounterTotalWaves");
     AddPlayerColumnIfMissing(dbContext, existingColumns, "PreferredEnemyKey");
     AddPlayerColumnIfMissing(dbContext, existingColumns, "PowerStrikeEnabled");
     AddPlayerColumnIfMissing(dbContext, existingColumns, "PowerStrikeCooldownRemaining");
@@ -629,6 +754,12 @@ static void AddPlayerColumnIfMissing(GameDbContext dbContext, HashSet<string> ex
             "CurrentEnemyAttack" => @"ALTER TABLE ""Players"" ADD COLUMN ""CurrentEnemyAttack"" INTEGER NULL",
             "CurrentEnemyGoldReward" => @"ALTER TABLE ""Players"" ADD COLUMN ""CurrentEnemyGoldReward"" INTEGER NULL",
             "CurrentEnemyExperienceReward" => @"ALTER TABLE ""Players"" ADD COLUMN ""CurrentEnemyExperienceReward"" INTEGER NULL",
+            "CurrentAreaKey" => @"ALTER TABLE ""Players"" ADD COLUMN ""CurrentAreaKey"" TEXT NOT NULL DEFAULT 'elwynn-forest'",
+            "CurrentEncounterType" => @"ALTER TABLE ""Players"" ADD COLUMN ""CurrentEncounterType"" TEXT NULL",
+            "CurrentEncounterKey" => @"ALTER TABLE ""Players"" ADD COLUMN ""CurrentEncounterKey"" TEXT NULL",
+            "CurrentEncounterName" => @"ALTER TABLE ""Players"" ADD COLUMN ""CurrentEncounterName"" TEXT NULL",
+            "CurrentEncounterWaveIndex" => @"ALTER TABLE ""Players"" ADD COLUMN ""CurrentEncounterWaveIndex"" INTEGER NULL",
+            "CurrentEncounterTotalWaves" => @"ALTER TABLE ""Players"" ADD COLUMN ""CurrentEncounterTotalWaves"" INTEGER NULL",
             "PreferredEnemyKey" => @"ALTER TABLE ""Players"" ADD COLUMN ""PreferredEnemyKey"" TEXT NOT NULL DEFAULT 'random'",
             "PowerStrikeEnabled" => @"ALTER TABLE ""Players"" ADD COLUMN ""PowerStrikeEnabled"" INTEGER NOT NULL DEFAULT 1",
             "PowerStrikeCooldownRemaining" => @"ALTER TABLE ""Players"" ADD COLUMN ""PowerStrikeCooldownRemaining"" INTEGER NOT NULL DEFAULT 0",
@@ -651,6 +782,66 @@ static string NormalizePreferredEnemyKey(string? preferredEnemyKey)
     return TryGetPreferredEnemyKey(preferredEnemyKey, out var normalizedKey)
         ? normalizedKey
         : PreferredEnemyRandomKey;
+}
+
+static bool TryGetAreaDefinition(
+    IReadOnlyDictionary<string, AreaDefinitionDto> areaByKey,
+    string? areaKey,
+    out AreaDefinitionDto area)
+{
+    if (string.IsNullOrWhiteSpace(areaKey))
+    {
+        area = default!;
+        return false;
+    }
+
+    return areaByKey.TryGetValue(areaKey.Trim(), out area!);
+}
+
+static void EnsurePlayerCurrentArea(
+    Player player,
+    IReadOnlyDictionary<string, AreaDefinitionDto> areaByKey,
+    AreaDefinitionDto startingArea)
+{
+    if (TryGetAreaDefinition(areaByKey, player.CurrentAreaKey, out _))
+    {
+        player.CurrentAreaKey = ResolveCurrentAreaKey(player);
+        return;
+    }
+
+    player.CurrentAreaKey = startingArea.AreaKey;
+}
+
+static void EnsureNormalEncounterAndEnemyForFight(
+    Player player,
+    IReadOnlyDictionary<string, AreaDefinitionDto> areaByKey,
+    IReadOnlyDictionary<string, EnemyTemplate> enemyTemplateByKey,
+    EnemyTemplate[] enemyTemplates,
+    AreaDefinitionDto startingArea)
+{
+    EnsurePlayerCurrentArea(player, areaByKey, startingArea);
+    if (HasCurrentEncounter(player) && HasCurrentEnemy(player))
+    {
+        return;
+    }
+
+    if (!TryGetAreaDefinition(areaByKey, player.CurrentAreaKey, out var currentArea))
+    {
+        currentArea = startingArea;
+        player.CurrentAreaKey = startingArea.AreaKey;
+    }
+
+    var preferredEnemyKey = NormalizePreferredEnemyKey(player.PreferredEnemyKey);
+    var enemyTemplate = GetEnemyTemplateForNewFightInArea(preferredEnemyKey, currentArea, enemyTemplateByKey, enemyTemplates);
+    var encounterKey = $"normal:{currentArea.AreaKey}:{enemyTemplate.Name.ToLowerInvariant().Replace(" ", "-")}";
+    AssignCurrentEncounter(
+        player,
+        EncounterTypeNormal,
+        encounterKey,
+        $"{currentArea.DisplayName} - Normal Encounter",
+        NormalEncounterSingleWaveIndex,
+        NormalEncounterSingleWaveTotal);
+    AssignCurrentEnemy(player, enemyTemplate);
 }
 
 static async Task<IResult> BuyShopItemAsync(
@@ -850,7 +1041,7 @@ static bool TryGetPreferredEnemyKey(string? preferredEnemyKey, out string normal
 
 static EnemyTemplate GetEnemyTemplateForNewFight(
     string preferredEnemyKey,
-    Dictionary<string, EnemyTemplate> enemyTemplateByKey,
+    IReadOnlyDictionary<string, EnemyTemplate> enemyTemplateByKey,
     EnemyTemplate[] enemyTemplates)
 {
     if (preferredEnemyKey == PreferredEnemyRandomKey)
@@ -861,6 +1052,39 @@ static EnemyTemplate GetEnemyTemplateForNewFight(
     return enemyTemplateByKey.TryGetValue(preferredEnemyKey, out var enemyTemplate)
         ? enemyTemplate
         : enemyTemplates[Random.Shared.Next(enemyTemplates.Length)];
+}
+
+static EnemyTemplate GetEnemyTemplateForNewFightInArea(
+    string preferredEnemyKey,
+    AreaDefinitionDto area,
+    IReadOnlyDictionary<string, EnemyTemplate> enemyTemplateByKey,
+    EnemyTemplate[] fallbackEnemyTemplates)
+{
+    var areaEnemyTemplates = area.NormalEnemyKeys
+        .Select(enemyKey =>
+        {
+            var normalizedEnemyKey = NormalizePreferredEnemyKey(enemyKey);
+            return enemyTemplateByKey.TryGetValue(normalizedEnemyKey, out var enemyTemplate)
+                ? enemyTemplate
+                : null;
+        })
+        .Where(template => template is not null)
+        .Cast<EnemyTemplate>()
+        .ToArray();
+
+    if (areaEnemyTemplates.Length <= 0)
+    {
+        return GetEnemyTemplateForNewFight(preferredEnemyKey, enemyTemplateByKey, fallbackEnemyTemplates);
+    }
+
+    if (preferredEnemyKey != PreferredEnemyRandomKey
+        && area.NormalEnemyKeys.Any(enemyKey => NormalizePreferredEnemyKey(enemyKey) == preferredEnemyKey)
+        && enemyTemplateByKey.TryGetValue(preferredEnemyKey, out var preferredEnemyTemplate))
+    {
+        return preferredEnemyTemplate;
+    }
+
+    return areaEnemyTemplates[Random.Shared.Next(areaEnemyTemplates.Length)];
 }
 
 static List<PlayerTurnActionType> BuildPlayerTurnActionSequence(Player player, int powerStrikeCooldownAtTurnStart)

@@ -106,6 +106,27 @@ app.MapGet("/api/shop/items", async (IHttpClientFactory httpClientFactory) =>
         : Results.Ok(items);
 });
 
+app.MapGet("/api/areas", async (IHttpClientFactory httpClientFactory) =>
+{
+    var serverApi = httpClientFactory.CreateClient("ServerApi");
+    var response = await serverApi.GetAsync("/api/areas");
+
+    if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+    {
+        return Results.NotFound();
+    }
+
+    if (!response.IsSuccessStatusCode)
+    {
+        return await ForwardResponseAsContentAsync(response);
+    }
+
+    var areas = await response.Content.ReadFromJsonAsync<AreaDefinitionDto[]>();
+    return areas is null
+        ? Results.StatusCode(StatusCodes.Status502BadGateway)
+        : Results.Ok(areas);
+});
+
 app.MapGet("/api/shop/items/food", async (IHttpClientFactory httpClientFactory) =>
 {
     var serverApi = httpClientFactory.CreateClient("ServerApi");
@@ -236,6 +257,27 @@ app.MapPost("/api/players/{id:int}/preferred-enemy", async (IHttpClientFactory h
 {
     var serverApi = httpClientFactory.CreateClient("ServerApi");
     var response = await serverApi.PostAsJsonAsync($"/api/players/{id}/preferred-enemy", request);
+
+    if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+    {
+        return Results.NotFound();
+    }
+
+    if (!response.IsSuccessStatusCode)
+    {
+        return await ForwardResponseAsContentAsync(response);
+    }
+
+    var player = await response.Content.ReadFromJsonAsync<PlayerDto>();
+    return player is null
+        ? Results.StatusCode(StatusCodes.Status502BadGateway)
+        : Results.Ok(player);
+});
+
+app.MapPost("/api/players/{id:int}/current-area", async (IHttpClientFactory httpClientFactory, int id, SetCurrentAreaRequest request) =>
+{
+    var serverApi = httpClientFactory.CreateClient("ServerApi");
+    var response = await serverApi.PostAsJsonAsync($"/api/players/{id}/current-area", request);
 
     if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
     {

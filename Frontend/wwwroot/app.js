@@ -27,6 +27,11 @@ const powerStrikeCheckbox = document.getElementById("powerStrikeCheckbox");
 const powerStrikeStatusElement = document.getElementById("powerStrikeStatus");
 const preferredEnemySelect = document.getElementById("preferredEnemySelect");
 const preferredEnemyStatusElement = document.getElementById("preferredEnemyStatus");
+const currentAreaSelect = document.getElementById("currentAreaSelect");
+const currentAreaStatusElement = document.getElementById("currentAreaStatus");
+const currentEncounterNameElement = document.getElementById("currentEncounterName");
+const currentEncounterTypeElement = document.getElementById("currentEncounterType");
+const currentEncounterWaveElement = document.getElementById("currentEncounterWave");
 const shopItemsContainerElement = document.getElementById("shopItemsContainer");
 const playerHoldingsContainerElement = document.getElementById("playerHoldingsContainer");
 const defaultAutoUseFoodThresholdPercent = 50;
@@ -46,6 +51,7 @@ let autoFightTickInProgress = false;
 let currentPreferredEnemyKey = defaultPreferredEnemyKey;
 let currentPowerStrikeEnabled = defaultPowerStrikeEnabled;
 let currentShopItems = [...defaultShopItems];
+let currentAreas = [];
 
 const preferredEnemyDisplayNameByKey = {
   random: "Random",
@@ -88,6 +94,58 @@ function syncPowerStrikeUi(player) {
   currentPowerStrikeEnabled = powerStrikeEnabled;
   powerStrikeCheckbox.checked = powerStrikeEnabled;
   powerStrikeStatusElement.textContent = `Power Strike: ${powerStrikeEnabled ? "On" : "Off"}`;
+}
+
+function normalizeArea(rawArea) {
+  const areaKey = typeof rawArea?.areaKey === "string" && rawArea.areaKey.trim().length > 0
+    ? rawArea.areaKey.trim().toLowerCase()
+    : "";
+  const displayName = typeof rawArea?.displayName === "string" && rawArea.displayName.trim().length > 0
+    ? rawArea.displayName.trim()
+    : areaKey;
+  const unlockLevel = Number.isFinite(rawArea?.unlockLevel) ? rawArea.unlockLevel : 1;
+  const isStartingArea = !!rawArea?.isStartingArea;
+  return { areaKey, displayName, unlockLevel, isStartingArea };
+}
+
+function syncAreaSelectUi(player) {
+  if (currentAreas.length <= 0) {
+    currentAreaSelect.innerHTML = "";
+    currentAreaStatusElement.textContent = "Current Area: -";
+    return;
+  }
+
+  const playerLevel = Number.isFinite(player?.level) ? player.level : 1;
+  const playerAreaKey = typeof player?.currentAreaKey === "string" && player.currentAreaKey.trim().length > 0
+    ? player.currentAreaKey.trim().toLowerCase()
+    : "";
+  const fallbackArea = currentAreas.find(area => area.isStartingArea) ?? currentAreas[0];
+  const selectedArea = currentAreas.find(area => area.areaKey === playerAreaKey) ?? fallbackArea;
+
+  currentAreaSelect.innerHTML = currentAreas.map(area => {
+    const locked = playerLevel < area.unlockLevel;
+    const lockSuffix = locked ? ` (Unlock Lv${area.unlockLevel})` : "";
+    return `<option value="${area.areaKey}" ${locked ? "disabled" : ""}>${area.displayName}${lockSuffix}</option>`;
+  }).join("");
+
+  currentAreaSelect.value = selectedArea.areaKey;
+  currentAreaStatusElement.textContent = `Current Area: ${selectedArea.displayName}`;
+}
+
+function showCurrentEncounter(player) {
+  const encounter = player?.currentEncounter ?? null;
+  if (!encounter?.isActive) {
+    currentEncounterNameElement.textContent = "No active encounter";
+    currentEncounterTypeElement.textContent = "-";
+    currentEncounterWaveElement.textContent = "-";
+    return;
+  }
+
+  currentEncounterNameElement.textContent = encounter.encounterName ?? "Encounter";
+  currentEncounterTypeElement.textContent = encounter.encounterType ?? "-";
+  const waveIndex = Number.isFinite(encounter.waveIndex) ? encounter.waveIndex : 1;
+  const totalWaves = Number.isFinite(encounter.totalWaves) ? encounter.totalWaves : 1;
+  currentEncounterWaveElement.textContent = `${waveIndex}/${totalWaves}`;
 }
 
 function showResult(data) {
@@ -263,6 +321,22 @@ async function loadShopItems() {
   syncShopItemsUi();
 }
 
+async function loadAreas() {
+  const response = await fetch("/api/areas");
+  if (!response.ok) {
+    currentAreas = [];
+    syncAreaSelectUi(null);
+    return;
+  }
+
+  const text = await response.text();
+  const areas = JSON.parse(text);
+  const normalizedAreas = Array.isArray(areas)
+    ? areas.map(normalizeArea).filter(area => area.areaKey.length > 0)
+    : [];
+  currentAreas = normalizedAreas;
+}
+
 function showPlayerStatus(player) {
   if (!player) {
     playerStatusIdElement.textContent = "-";
@@ -279,6 +353,8 @@ function showPlayerStatus(player) {
     playerStatusUpdatedAtElement.textContent = "-";
     syncPreferredEnemyUi(null);
     syncPowerStrikeUi(null);
+    syncAreaSelectUi(null);
+    showCurrentEncounter(null);
     return;
   }
 
@@ -296,6 +372,7 @@ function showPlayerStatus(player) {
   playerStatusUpdatedAtElement.textContent = player.updatedAt;
   syncPreferredEnemyUi(player);
   syncPowerStrikeUi(player);
+  syncAreaSelectUi(player);
 }
 
 function showCurrentEnemy(player) {
@@ -309,6 +386,45 @@ function showCurrentEnemy(player) {
   currentEnemyNameElement.textContent = player.currentEnemyName;
   currentEnemyHpElement.textContent = `${player.currentEnemyCurrentHp}/${player.currentEnemyMaxHp}`;
   currentEnemyAttackElement.textContent = player.currentEnemyAttack;
+}
+
+async function setCurrentArea() {
+  const id = playerIdInput.value;
+  const areaKey = typeof currentAreaSelect.value === "string" ? currentAreaSelect.value.trim().toLowerCase() : "";
+  if (!areaKey) {
+    return;
+  }
+
+  const response = await fetch(`/api/players/${encodeURIComponent(id)}/current-area`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ areaKey })
+  });
+
+  const text = await response.text();
+  if (!response.ok) {
+    let message = "Set current area failed.";
+    try {
+      const errorPayload = JSON.parse(text);
+      if (errorPayload?.message) {
+        message = errorPayload.message;
+      }
+    } catch {
+      // keep fallback message
+    }
+
+    writeLastResultMessages([message]);
+    showResult({ error: `Set current area failed (${response.status})`, detail: text });
+    return;
+  }
+
+  const player = JSON.parse(text);
+  showPlayerStatus(player);
+  showCurrentEncounter(player);
+  showCurrentEnemy(player);
+  await loadHoldings(player.id);
+  writeLastResultMessages([`Current Area updated: ${player.currentAreaDisplayName}.`]);
+  showResult(player);
 }
 
 function formatHoldingRow(holding) {
@@ -350,6 +466,7 @@ async function loadHoldings(playerId) {
 
 async function loadPlayer() {
   stopAutoFight();
+  await loadAreas();
   const id = playerIdInput.value;
   const response = await fetch(`/api/players/${encodeURIComponent(id)}`);
   const text = await response.text();
@@ -364,6 +481,7 @@ async function loadPlayer() {
 
   const player = JSON.parse(text);
   showPlayerStatus(player);
+  showCurrentEncounter(player);
   showCurrentEnemy(player);
   await loadHoldings(player.id);
   writeLastResultMessages([`Load Player success: ${player.name} (ID ${player.id}).`]);
@@ -373,6 +491,7 @@ async function loadPlayer() {
 async function createPlayer() {
   stopAutoFight();
   const name = playerNameInput.value.trim();
+  await loadAreas();
   const response = await fetch("/api/players", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -391,6 +510,7 @@ async function createPlayer() {
   const player = JSON.parse(text);
   playerIdInput.value = player.id;
   showPlayerStatus(player);
+  showCurrentEncounter(player);
   showCurrentEnemy(player);
   await loadHoldings(player.id);
   writeLastResultMessages([`Create Player success: ${player.name} (ID ${player.id}).`]);
@@ -414,6 +534,7 @@ async function addGold() {
 
   const player = JSON.parse(text);
   showPlayerStatus(player);
+  showCurrentEncounter(player);
   showCurrentEnemy(player);
   await loadHoldings(player.id);
   writeLastResultMessages([`Add Gold success: +10 Gold (Current: ${player.gold}).`]);
@@ -646,6 +767,7 @@ async function fight(options = {}) {
 
   const fightResult = JSON.parse(text);
   showPlayerStatus(fightResult.player);
+  showCurrentEncounter(fightResult.player);
   showCurrentEnemy(fightResult.player);
   await loadHoldings(fightResult?.player?.id);
   const messages = [buildFightMessage(fightResult)];
@@ -695,6 +817,7 @@ async function useFood(options = {}) {
   const useFoodResult = JSON.parse(text);
   const player = useFoodResult.player;
   showPlayerStatus(player);
+  showCurrentEncounter(player);
   showCurrentEnemy(player);
   await loadHoldings(player?.id);
   const foodMessage = formatUseFoodResultSummary(useFoodResult, source);
@@ -740,6 +863,7 @@ async function useItem(itemKey, options = {}) {
   const useItemResult = JSON.parse(text);
   const player = useItemResult.player;
   showPlayerStatus(player);
+  showCurrentEncounter(player);
   showCurrentEnemy(player);
   await loadHoldings(player?.id);
   const message = formatUseItemResultSummary(useItemResult);
@@ -781,6 +905,7 @@ async function buyShopItem(itemKey) {
   const player = purchaseResult.player;
   if (player) {
     showPlayerStatus(player);
+    showCurrentEncounter(player);
     showCurrentEnemy(player);
     await loadHoldings(player.id);
   } else {
@@ -824,6 +949,7 @@ async function setPreferredEnemy() {
   const player = JSON.parse(text);
   const preferredEnemyName = getPreferredEnemyDisplayName(player.preferredEnemyKey);
   showPlayerStatus(player);
+  showCurrentEncounter(player);
   showCurrentEnemy(player);
   await loadHoldings(player.id);
   writeLastResultMessages([`Preferred Enemy updated: ${preferredEnemyName}.`]);
@@ -850,6 +976,7 @@ async function setPowerStrikeEnabled() {
 
   const player = JSON.parse(text);
   showPlayerStatus(player);
+  showCurrentEncounter(player);
   showCurrentEnemy(player);
   await loadHoldings(player.id);
   writeLastResultMessages([`Power Strike ${player.powerStrikeEnabled ? "enabled" : "disabled"}.`]);
@@ -988,10 +1115,13 @@ stopAutoFightButton.addEventListener("click", stopAutoFight);
 autoUseFoodCheckbox.addEventListener("change", setAutoUseFoodStatus);
 autoUseFoodThresholdSelect.addEventListener("change", setAutoUseFoodStatus);
 preferredEnemySelect.addEventListener("change", setPreferredEnemy);
+currentAreaSelect.addEventListener("change", setCurrentArea);
 powerStrikeCheckbox.addEventListener("change", setPowerStrikeEnabled);
 setAutoFightStatus(false);
 setAutoUseFoodStatus();
+loadAreas();
 loadShopItems();
 syncPreferredEnemyUi(null);
 syncPowerStrikeUi(null);
+showCurrentEncounter(null);
 showHoldings([]);

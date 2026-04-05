@@ -7,6 +7,7 @@ public class Player
     private const int DefaultMaxHp = 30;
     private const int DefaultFood = 3;
     private const string DefaultPreferredEnemyKey = "random";
+    private const string DefaultCurrentAreaKey = "elwynn-forest";
     private const bool DefaultPowerStrikeEnabled = true;
     private const int DefaultPowerStrikeCooldownRemaining = 0;
 
@@ -21,6 +22,7 @@ public class Player
         CurrentHp = DefaultMaxHp;
         Food = DefaultFood;
         PreferredEnemyKey = DefaultPreferredEnemyKey;
+        CurrentAreaKey = DefaultCurrentAreaKey;
         PowerStrikeEnabled = DefaultPowerStrikeEnabled;
         PowerStrikeCooldownRemaining = DefaultPowerStrikeCooldownRemaining;
     }
@@ -40,6 +42,12 @@ public class Player
     public int? CurrentEnemyAttack { get; set; }
     public int? CurrentEnemyGoldReward { get; set; }
     public int? CurrentEnemyExperienceReward { get; set; }
+    public string CurrentAreaKey { get; set; }
+    public string? CurrentEncounterType { get; set; }
+    public string? CurrentEncounterKey { get; set; }
+    public string? CurrentEncounterName { get; set; }
+    public int? CurrentEncounterWaveIndex { get; set; }
+    public int? CurrentEncounterTotalWaves { get; set; }
     public string PreferredEnemyKey { get; set; }
     public bool PowerStrikeEnabled { get; set; }
     public int PowerStrikeCooldownRemaining { get; set; }
