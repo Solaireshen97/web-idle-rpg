@@ -31,7 +31,6 @@ const string PreferredEnemyGoblinKey = "goblin";
 const string AreaElwynnForestKey = "elwynn-forest";
 const string AreaWestfallKey = "westfall";
 const string EncounterTypeNormal = "normal";
-const string EncounterTypeDungeon = "dungeon";
 const int NormalEncounterSingleWaveIndex = 1;
 const int NormalEncounterSingleWaveTotal = 1;
 
