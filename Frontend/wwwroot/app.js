@@ -27,7 +27,13 @@ const powerStrikeCheckbox = document.getElementById("powerStrikeCheckbox");
 const powerStrikeStatusElement = document.getElementById("powerStrikeStatus");
 const preferredEnemySelect = document.getElementById("preferredEnemySelect");
 const preferredEnemyStatusElement = document.getElementById("preferredEnemyStatus");
+const currentAreaSelect = document.getElementById("currentAreaSelect");
+const currentAreaStatusElement = document.getElementById("currentAreaStatus");
+const currentEncounterNameElement = document.getElementById("currentEncounterName");
+const currentEncounterTypeElement = document.getElementById("currentEncounterType");
+const currentEncounterWaveElement = document.getElementById("currentEncounterWave");
 const shopItemsContainerElement = document.getElementById("shopItemsContainer");
+const playerHoldingsContainerElement = document.getElementById("playerHoldingsContainer");
 const defaultAutoUseFoodThresholdPercent = 50;
 const defaultPreferredEnemyKey = "random";
 const defaultPowerStrikeEnabled = true;
@@ -36,7 +42,8 @@ const defaultShopItem = {
   itemKey: "food",
   displayName: "Food",
   goldPrice: 5,
-  effect: { foodDelta: 1 }
+  effect: { foodDelta: 1 },
+  consumableUse: { consumedAmount: 1, hpRecover: 10 }
 };
 const defaultShopItems = [defaultShopItem];
 let autoFightTimerId = null;
@@ -44,6 +51,7 @@ let autoFightTickInProgress = false;
 let currentPreferredEnemyKey = defaultPreferredEnemyKey;
 let currentPowerStrikeEnabled = defaultPowerStrikeEnabled;
 let currentShopItems = [...defaultShopItems];
+let currentAreas = [];
 
 const preferredEnemyDisplayNameByKey = {
   random: "Random",
@@ -88,6 +96,58 @@ function syncPowerStrikeUi(player) {
   powerStrikeStatusElement.textContent = `Power Strike: ${powerStrikeEnabled ? "On" : "Off"}`;
 }
 
+function normalizeArea(rawArea) {
+  const areaKey = typeof rawArea?.areaKey === "string" && rawArea.areaKey.trim().length > 0
+    ? rawArea.areaKey.trim().toLowerCase()
+    : "";
+  const displayName = typeof rawArea?.displayName === "string" && rawArea.displayName.trim().length > 0
+    ? rawArea.displayName.trim()
+    : areaKey;
+  const unlockLevel = Number.isFinite(rawArea?.unlockLevel) ? rawArea.unlockLevel : 1;
+  const isStartingArea = !!rawArea?.isStartingArea;
+  return { areaKey, displayName, unlockLevel, isStartingArea };
+}
+
+function syncAreaSelectUi(player) {
+  if (currentAreas.length <= 0) {
+    currentAreaSelect.innerHTML = "";
+    currentAreaStatusElement.textContent = "Current Area: -";
+    return;
+  }
+
+  const playerLevel = Number.isFinite(player?.level) ? player.level : 1;
+  const playerAreaKey = typeof player?.currentAreaKey === "string" && player.currentAreaKey.trim().length > 0
+    ? player.currentAreaKey.trim().toLowerCase()
+    : "";
+  const fallbackArea = currentAreas.find(area => area.isStartingArea) ?? currentAreas[0];
+  const selectedArea = currentAreas.find(area => area.areaKey === playerAreaKey) ?? fallbackArea;
+
+  currentAreaSelect.innerHTML = currentAreas.map(area => {
+    const locked = playerLevel < area.unlockLevel;
+    const lockSuffix = locked ? ` (Unlock Lv${area.unlockLevel})` : "";
+    return `<option value="${area.areaKey}" ${locked ? "disabled" : ""}>${area.displayName}${lockSuffix}</option>`;
+  }).join("");
+
+  currentAreaSelect.value = selectedArea.areaKey;
+  currentAreaStatusElement.textContent = `Current Area: ${selectedArea.displayName}`;
+}
+
+function showCurrentEncounter(player) {
+  const encounter = player?.currentEncounter ?? null;
+  if (!encounter?.isActive) {
+    currentEncounterNameElement.textContent = "No active encounter";
+    currentEncounterTypeElement.textContent = "-";
+    currentEncounterWaveElement.textContent = "-";
+    return;
+  }
+
+  currentEncounterNameElement.textContent = encounter.encounterName ?? "Encounter";
+  currentEncounterTypeElement.textContent = encounter.encounterType ?? "-";
+  const waveIndex = Number.isFinite(encounter.waveIndex) ? encounter.waveIndex : 1;
+  const totalWaves = Number.isFinite(encounter.totalWaves) ? encounter.totalWaves : 1;
+  currentEncounterWaveElement.textContent = `${waveIndex}/${totalWaves}`;
+}
+
 function showResult(data) {
   resultElement.textContent = JSON.stringify(data, null, 2);
 }
@@ -103,8 +163,60 @@ function writeLastResultMessages(messages) {
 }
 
 function getShopItemEffectText(shopItem) {
+  if (isPureHpRecoverShopItem(shopItem)) {
+    return `Recover ${shopItem.effect.hpRecover} HP`;
+  }
   const foodDelta = Number.isFinite(shopItem?.effect?.foodDelta) ? shopItem.effect.foodDelta : 0;
   return `+${foodDelta} Food`;
+}
+
+function isPureHpRecoverShopItem(shopItem) {
+  const hpRecover = Number.isFinite(shopItem?.effect?.hpRecover) ? shopItem.effect.hpRecover : 0;
+  const foodDelta = Number.isFinite(shopItem?.effect?.foodDelta) ? shopItem.effect.foodDelta : 0;
+  return hpRecover > 0 && foodDelta <= 0;
+}
+
+function resolveConsumableUseMetadata(shopItem) {
+  const consumedAmount = Number.isFinite(shopItem?.consumableUse?.consumedAmount) && shopItem.consumableUse.consumedAmount > 0
+    ? shopItem.consumableUse.consumedAmount
+    : 0;
+  const hpRecover = Number.isFinite(shopItem?.consumableUse?.hpRecover) && shopItem.consumableUse.hpRecover >= 0
+    ? shopItem.consumableUse.hpRecover
+    : 0;
+  return { consumedAmount, hpRecover };
+}
+
+function isManuallyConsumableShopItem(shopItem) {
+  const consumableUse = resolveConsumableUseMetadata(shopItem);
+  return consumableUse.consumedAmount > 0 && consumableUse.hpRecover > 0;
+}
+
+function getManualConsumableItemKeyByDisplayName(displayName) {
+  const normalizedDisplayName = typeof displayName === "string" ? displayName.trim().toLowerCase() : "";
+  const match = currentShopItems.find(item =>
+    isManuallyConsumableShopItem(item)
+    && item.itemKey !== "food"
+    && (typeof item.displayName === "string" ? item.displayName.trim().toLowerCase() : "") === normalizedDisplayName);
+  return typeof match?.itemKey === "string" && match.itemKey.trim().length > 0
+    ? match.itemKey.trim().toLowerCase()
+    : null;
+}
+
+async function useConsumableItem(itemKey, options = {}) {
+  const normalizedItemKey = typeof itemKey === "string" ? itemKey.trim().toLowerCase() : "";
+  if (!normalizedItemKey) {
+    if (options.writeLastResult !== false) {
+      writeLastResultMessages(["Use item failed: Invalid consumable item key."]);
+    }
+    showResult({ error: "Use item failed.", detail: "Invalid consumable item key." });
+    return null;
+  }
+
+  if (normalizedItemKey === "food") {
+    return useFood(options);
+  }
+
+  return useItem(normalizedItemKey, options);
 }
 
 function formatShopPurchaseResultSummary(purchaseResult) {
@@ -112,23 +224,43 @@ function formatShopPurchaseResultSummary(purchaseResult) {
   const displayName = typeof purchaseResult?.displayName === "string" && purchaseResult.displayName.trim().length > 0
     ? purchaseResult.displayName.trim()
     : "item";
-  const spentGold = Number.isFinite(purchaseResult?.spentGold) ? purchaseResult.spentGold : 0;
-  const foodDelta = Number.isFinite(purchaseResult?.effect?.foodDelta) ? purchaseResult.effect.foodDelta : 0;
+  const resourceDelta = resolveShopPurchaseResourceDelta(purchaseResult);
+  const holdingDelta = resolveHoldingDelta(purchaseResult?.holdingDelta);
   const currentGold = Number.isFinite(player?.gold) ? player.gold : "?";
+  const currentExperience = Number.isFinite(player?.experience) ? player.experience : "?";
   const currentFood = Number.isFinite(player?.food) ? player.food : "?";
-  return `Buy ${displayName} success: Spent ${spentGold} Gold, gained ${foodDelta} Food. Remaining Gold: ${currentGold}, Current Food: ${currentFood}.`;
+  return `Buy ${displayName} success: Resource Delta ${formatResourceDeltaText(resourceDelta.goldDelta, resourceDelta.experienceDelta, resourceDelta.foodDelta)}, Holding Delta ${formatHoldingDeltaText(holdingDelta)}. Current Resources: Gold ${currentGold}, EXP ${currentExperience}, Food ${currentFood}.`;
 }
 
 function formatUseFoodResultSummary(useFoodResult, source) {
-  const player = useFoodResult?.player ?? null;
-  const actionName = source === "auto" ? "Auto Use Food" : (typeof useFoodResult?.actionName === "string" && useFoodResult.actionName.trim().length > 0
-    ? useFoodResult.actionName.trim()
-    : "Use Food");
-  const consumedAmount = Number.isFinite(useFoodResult?.consumedAmount) ? useFoodResult.consumedAmount : 1;
-  const recoveredHp = Number.isFinite(useFoodResult?.recoveredHp) ? useFoodResult.recoveredHp : 0;
+  return formatConsumableUseResultSummary(useFoodResult, {
+    defaultItemKey: "food",
+    actionName: source === "auto" ? "Auto Use Food" : undefined
+  });
+}
+
+function formatUseItemResultSummary(useItemResult) {
+  return formatConsumableUseResultSummary(useItemResult);
+}
+
+function formatConsumableUseResultSummary(useResult, options = {}) {
+  const player = useResult?.player ?? null;
+  const itemKey = resolveConsumableUseItemKey(useResult, options.defaultItemKey);
+  const consumedAmount = Number.isFinite(useResult?.consumedAmount) ? useResult.consumedAmount : 1;
+  const actionName = typeof options.actionName === "string" && options.actionName.trim().length > 0
+    ? options.actionName.trim()
+    : (typeof useResult?.actionName === "string" && useResult.actionName.trim().length > 0
+      ? useResult.actionName.trim()
+      : `Use ${humanizeHoldingItemKey(itemKey)}`);
+  const recoveredHp = Number.isFinite(useResult?.recoveredHp) ? useResult.recoveredHp : 0;
+  const resourceDelta = resolveConsumableUseResourceDelta(useResult, itemKey, consumedAmount);
+  const holdingDelta = resolveHoldingDelta(useResult?.holdingDelta, {
+    itemKey,
+    quantityDelta: -consumedAmount
+  });
   const currentHp = Number.isFinite(player?.currentHp) ? player.currentHp : "?";
   const maxHp = Number.isFinite(player?.maxHp) ? player.maxHp : "?";
-  return `${actionName}: used ${consumedAmount} Food and recovered ${recoveredHp} HP. Current HP: ${currentHp}/${maxHp}.`;
+  return `${actionName}: Resource Delta ${formatResourceDeltaText(resourceDelta.goldDelta, resourceDelta.experienceDelta, resourceDelta.foodDelta)}, Holding Delta ${formatHoldingDeltaText(holdingDelta)}, recovered ${recoveredHp} HP. Current HP: ${currentHp}/${maxHp}.`;
 }
 
 function syncShopItemsUi() {
@@ -150,12 +282,25 @@ function normalizeShopItem(rawItem) {
   const foodDelta = Number.isFinite(rawItem?.effect?.foodDelta)
     ? rawItem.effect.foodDelta
     : defaultShopItem.effect.foodDelta;
+  const hpRecover = Number.isFinite(rawItem?.effect?.hpRecover) && rawItem.effect.hpRecover >= 0
+    ? rawItem.effect.hpRecover
+    : 0;
+  const consumableUseConsumedAmount = Number.isFinite(rawItem?.consumableUse?.consumedAmount) && rawItem.consumableUse.consumedAmount > 0
+    ? rawItem.consumableUse.consumedAmount
+    : 0;
+  const consumableUseHpRecover = Number.isFinite(rawItem?.consumableUse?.hpRecover) && rawItem.consumableUse.hpRecover >= 0
+    ? rawItem.consumableUse.hpRecover
+    : 0;
 
   return {
     itemKey,
     displayName,
     goldPrice,
-    effect: { foodDelta }
+    effect: { foodDelta, hpRecover },
+    consumableUse: {
+      consumedAmount: consumableUseConsumedAmount,
+      hpRecover: consumableUseHpRecover
+    }
   };
 }
 
@@ -176,6 +321,22 @@ async function loadShopItems() {
   syncShopItemsUi();
 }
 
+async function loadAreas() {
+  const response = await fetch("/api/areas");
+  if (!response.ok) {
+    currentAreas = [];
+    syncAreaSelectUi(null);
+    return;
+  }
+
+  const text = await response.text();
+  const areas = JSON.parse(text);
+  const normalizedAreas = Array.isArray(areas)
+    ? areas.map(normalizeArea).filter(area => area.areaKey.length > 0)
+    : [];
+  currentAreas = normalizedAreas;
+}
+
 function showPlayerStatus(player) {
   if (!player) {
     playerStatusIdElement.textContent = "-";
@@ -192,6 +353,8 @@ function showPlayerStatus(player) {
     playerStatusUpdatedAtElement.textContent = "-";
     syncPreferredEnemyUi(null);
     syncPowerStrikeUi(null);
+    syncAreaSelectUi(null);
+    showCurrentEncounter(null);
     return;
   }
 
@@ -209,6 +372,7 @@ function showPlayerStatus(player) {
   playerStatusUpdatedAtElement.textContent = player.updatedAt;
   syncPreferredEnemyUi(player);
   syncPowerStrikeUi(player);
+  syncAreaSelectUi(player);
 }
 
 function showCurrentEnemy(player) {
@@ -224,8 +388,85 @@ function showCurrentEnemy(player) {
   currentEnemyAttackElement.textContent = player.currentEnemyAttack;
 }
 
+async function setCurrentArea() {
+  const id = playerIdInput.value;
+  const areaKey = typeof currentAreaSelect.value === "string" ? currentAreaSelect.value.trim().toLowerCase() : "";
+  if (!areaKey) {
+    return;
+  }
+
+  const response = await fetch(`/api/players/${encodeURIComponent(id)}/current-area`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ areaKey })
+  });
+
+  const text = await response.text();
+  if (!response.ok) {
+    let message = "Set current area failed.";
+    try {
+      const errorPayload = JSON.parse(text);
+      if (errorPayload?.message) {
+        message = errorPayload.message;
+      }
+    } catch {
+      // keep fallback message
+    }
+
+    writeLastResultMessages([message]);
+    showResult({ error: `Set current area failed (${response.status})`, detail: text });
+    return;
+  }
+
+  const player = JSON.parse(text);
+  showPlayerStatus(player);
+  showCurrentEncounter(player);
+  showCurrentEnemy(player);
+  await loadHoldings(player.id);
+  writeLastResultMessages([`Current Area updated: ${player.currentAreaDisplayName}.`]);
+  showResult(player);
+}
+
+function formatHoldingRow(holding) {
+  const displayName = typeof holding?.displayName === "string" && holding.displayName.trim().length > 0
+    ? holding.displayName.trim()
+    : (typeof holding?.itemKey === "string" && holding.itemKey.trim().length > 0 ? holding.itemKey.trim() : "item");
+  const quantity = Number.isFinite(holding?.quantity) ? holding.quantity : 0;
+  return `${displayName} x ${quantity}`;
+}
+
+function showHoldings(holdings) {
+  if (!Array.isArray(holdings) || holdings.length <= 0) {
+    playerHoldingsContainerElement.textContent = "No holdings.";
+    return;
+  }
+
+  playerHoldingsContainerElement.innerHTML = holdings
+    .map(formatHoldingRow)
+    .map(row => `<div>${row}</div>`)
+    .join("");
+}
+
+async function loadHoldings(playerId) {
+  if (!Number.isFinite(playerId)) {
+    showHoldings([]);
+    return;
+  }
+
+  const response = await fetch(`/api/players/${encodeURIComponent(playerId)}/holdings`);
+  if (!response.ok) {
+    showHoldings([]);
+    return;
+  }
+
+  const text = await response.text();
+  const holdings = JSON.parse(text);
+  showHoldings(holdings);
+}
+
 async function loadPlayer() {
   stopAutoFight();
+  await loadAreas();
   const id = playerIdInput.value;
   const response = await fetch(`/api/players/${encodeURIComponent(id)}`);
   const text = await response.text();
@@ -240,7 +481,9 @@ async function loadPlayer() {
 
   const player = JSON.parse(text);
   showPlayerStatus(player);
+  showCurrentEncounter(player);
   showCurrentEnemy(player);
+  await loadHoldings(player.id);
   writeLastResultMessages([`Load Player success: ${player.name} (ID ${player.id}).`]);
   showResult(player);
 }
@@ -248,6 +491,7 @@ async function loadPlayer() {
 async function createPlayer() {
   stopAutoFight();
   const name = playerNameInput.value.trim();
+  await loadAreas();
   const response = await fetch("/api/players", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -266,7 +510,9 @@ async function createPlayer() {
   const player = JSON.parse(text);
   playerIdInput.value = player.id;
   showPlayerStatus(player);
+  showCurrentEncounter(player);
   showCurrentEnemy(player);
+  await loadHoldings(player.id);
   writeLastResultMessages([`Create Player success: ${player.name} (ID ${player.id}).`]);
   showResult(player);
 }
@@ -288,7 +534,9 @@ async function addGold() {
 
   const player = JSON.parse(text);
   showPlayerStatus(player);
+  showCurrentEncounter(player);
   showCurrentEnemy(player);
+  await loadHoldings(player.id);
   writeLastResultMessages([`Add Gold success: +10 Gold (Current: ${player.gold}).`]);
   showResult(player);
 }
@@ -304,12 +552,166 @@ function buildFightMessage(fightResult) {
   const enemyText = `Enemy: ${fightResult.enemyName} (ATK ${fightResult.enemyAttack})`;
   const enemyHpText = `Enemy HP: ${fightResult.enemyCurrentHp}/${fightResult.enemyMaxHp}`;
   const roundDamageText = `Round Damage -> You: ${fightResult.playerDamageDealt}, Enemy: ${fightResult.enemyDamageDealt} | Enemy Turn: ${enemyActionOrderText} | Enemy Action Damage: ${enemyActionDamageText}`;
-  const rewardText = fightResult.enemyDefeated
-    ? `Rewards: Gold +${fightResult.goldReward}, EXP +${fightResult.experienceReward}`
-    : "Rewards: none";
+  const rewardText = formatFightRewardText(fightResult);
   const levelText = fightResult.leveledUp ? ` | LEVEL UP! Lv${fightResult.player.level}` : "";
   const resultText = `Status: ${statusText} | Player Turn: ${actionOrderText} | Action Damage: ${actionDamageText} | ${enemyHpText} | ${roundDamageText} | ${rewardText}${levelText} | Player HP: ${fightResult.player.currentHp}/${fightResult.player.maxHp}`;
   return `${enemyText} | ${resultText} | ${fightResult.summary}`;
+}
+
+function formatFightRewardText(fightResult) {
+  if (!fightResult?.enemyDefeated) {
+    return "Rewards: none";
+  }
+
+  const rewards = fightResult?.rewards ?? null;
+  const resourceDelta = resolveFightRewardResourceDelta(fightResult, rewards);
+  return `Rewards: Resource Delta ${formatResourceDeltaText(resourceDelta.goldDelta, resourceDelta.experienceDelta, resourceDelta.foodDelta)}`;
+}
+
+function coalesceFiniteWithZeroDefault(primaryValue, fallbackValue) {
+  if (Number.isFinite(primaryValue)) {
+    return primaryValue;
+  }
+
+  if (Number.isFinite(fallbackValue)) {
+    return fallbackValue;
+  }
+
+  return 0;
+}
+
+function resolveShopPurchaseResourceDelta(purchaseResult) {
+  const resourcesDelta = purchaseResult?.resourcesDelta ?? null;
+  const spentGold = Number.isFinite(purchaseResult?.spentGold) ? purchaseResult.spentGold : 0;
+  return {
+    goldDelta: coalesceFiniteWithZeroDefault(resourcesDelta?.goldDelta, -spentGold),
+    experienceDelta: coalesceFiniteWithZeroDefault(resourcesDelta?.experienceDelta, 0),
+    foodDelta: coalesceFiniteWithZeroDefault(resourcesDelta?.foodDelta, purchaseResult?.effect?.foodDelta)
+  };
+}
+
+function resolveConsumableUseResourceDelta(useResult, itemKey, consumedAmount) {
+  const resourcesDelta = useResult?.resourcesDelta ?? null;
+  const fallbackFoodDelta = itemKey === "food" ? -consumedAmount : 0;
+  return {
+    goldDelta: coalesceFiniteWithZeroDefault(resourcesDelta?.goldDelta, 0),
+    experienceDelta: coalesceFiniteWithZeroDefault(resourcesDelta?.experienceDelta, 0),
+    foodDelta: coalesceFiniteWithZeroDefault(resourcesDelta?.foodDelta, fallbackFoodDelta)
+  };
+}
+
+function resolveConsumableUseItemKey(useResult, defaultItemKey = "item") {
+  const rawItemKey = typeof useResult?.itemKey === "string" && useResult.itemKey.trim().length > 0
+    ? useResult.itemKey.trim().toLowerCase()
+    : "";
+  if (rawItemKey.length > 0) {
+    return rawItemKey;
+  }
+
+  const rawResourceKey = typeof useResult?.resourceKey === "string" && useResult.resourceKey.trim().length > 0
+    ? useResult.resourceKey.trim().toLowerCase()
+    : "";
+  if (rawResourceKey.length > 0) {
+    return rawResourceKey;
+  }
+
+  return defaultItemKey;
+}
+
+function resolveUseItemResourceDelta(useItemResult) {
+  const itemKey = resolveConsumableUseItemKey(useItemResult);
+  const consumedAmount = Number.isFinite(useItemResult?.consumedAmount) ? useItemResult.consumedAmount : 1;
+  return resolveConsumableUseResourceDelta(useItemResult, itemKey, consumedAmount);
+}
+
+function resolveUseFoodResourceDelta(useFoodResult) {
+  const itemKey = resolveConsumableUseItemKey(useFoodResult, "food");
+  const consumedAmount = Number.isFinite(useFoodResult?.consumedAmount) ? useFoodResult.consumedAmount : 1;
+  return resolveConsumableUseResourceDelta(useFoodResult, itemKey, consumedAmount);
+}
+
+function resolveHoldingDelta(rawHoldingDelta, fallback = null) {
+  const fallbackItemKey = typeof fallback?.itemKey === "string" && fallback.itemKey.trim().length > 0
+    ? fallback.itemKey.trim().toLowerCase()
+    : "item";
+  const fallbackQuantityDelta = Number.isFinite(fallback?.quantityDelta) ? fallback.quantityDelta : 0;
+  const itemKey = typeof rawHoldingDelta?.itemKey === "string" && rawHoldingDelta.itemKey.trim().length > 0
+    ? rawHoldingDelta.itemKey.trim().toLowerCase()
+    : fallbackItemKey;
+  const quantityDelta = Number.isFinite(rawHoldingDelta?.quantityDelta)
+    ? rawHoldingDelta.quantityDelta
+    : fallbackQuantityDelta;
+  const displayName = typeof rawHoldingDelta?.displayName === "string" && rawHoldingDelta.displayName.trim().length > 0
+    ? rawHoldingDelta.displayName.trim()
+    : humanizeHoldingItemKey(itemKey);
+
+  return { itemKey, quantityDelta, displayName };
+}
+
+function humanizeHoldingItemKey(itemKey) {
+  if (typeof itemKey !== "string" || itemKey.trim().length <= 0) {
+    return "item";
+  }
+
+  return itemKey
+    .trim()
+    .split("-")
+    .filter(part => part.length > 0)
+    .map(part => `${part.charAt(0).toUpperCase()}${part.slice(1)}`)
+    .join(" ");
+}
+
+function formatHoldingDeltaText(holdingDelta) {
+  if (!holdingDelta || !Number.isFinite(holdingDelta.quantityDelta) || holdingDelta.quantityDelta === 0) {
+    return "(none)";
+  }
+
+  const displayName = typeof holdingDelta.displayName === "string" && holdingDelta.displayName.trim().length > 0
+    ? holdingDelta.displayName.trim()
+    : humanizeHoldingItemKey(holdingDelta.itemKey);
+  return `(${displayName} ${formatSignedDelta(holdingDelta.quantityDelta)})`;
+}
+
+function resolveFightRewardResourceDelta(fightResult, rewards) {
+  const resourcesDelta = rewards?.resourcesDelta ?? null;
+  const goldReward = coalesceFiniteWithZeroDefault(rewards?.gold, fightResult?.goldReward);
+  const experienceReward = coalesceFiniteWithZeroDefault(rewards?.experience, fightResult?.experienceReward);
+  const foodReward = coalesceFiniteWithZeroDefault(rewards?.food, 0);
+  return {
+    goldDelta: coalesceFiniteWithZeroDefault(resourcesDelta?.goldDelta, goldReward),
+    experienceDelta: coalesceFiniteWithZeroDefault(resourcesDelta?.experienceDelta, experienceReward),
+    foodDelta: coalesceFiniteWithZeroDefault(resourcesDelta?.foodDelta, foodReward)
+  };
+}
+
+function formatSignedDelta(value) {
+  const normalized = Number.isFinite(value) ? value : 0;
+  if (normalized > 0) {
+    return `+${normalized}`;
+  }
+
+  return `${normalized}`;
+}
+
+function formatResourceDeltaText(goldDelta, experienceDelta, foodDelta) {
+  const entries = [];
+  if (goldDelta !== 0) {
+    entries.push(`Gold ${formatSignedDelta(goldDelta)}`);
+  }
+
+  if (experienceDelta !== 0) {
+    entries.push(`EXP ${formatSignedDelta(experienceDelta)}`);
+  }
+
+  if (foodDelta !== 0) {
+    entries.push(`Food ${formatSignedDelta(foodDelta)}`);
+  }
+
+  if (entries.length <= 0) {
+    return "(none)";
+  }
+
+  return `(${entries.join(", ")})`;
 }
 
 function formatPlayerActionOrder(playerActions) {
@@ -365,7 +767,9 @@ async function fight(options = {}) {
 
   const fightResult = JSON.parse(text);
   showPlayerStatus(fightResult.player);
+  showCurrentEncounter(fightResult.player);
   showCurrentEnemy(fightResult.player);
+  await loadHoldings(fightResult?.player?.id);
   const messages = [buildFightMessage(fightResult)];
   if (fightResult.playerDefeated && autoFightTimerId !== null) {
     stopAutoFight();
@@ -413,7 +817,9 @@ async function useFood(options = {}) {
   const useFoodResult = JSON.parse(text);
   const player = useFoodResult.player;
   showPlayerStatus(player);
+  showCurrentEncounter(player);
   showCurrentEnemy(player);
+  await loadHoldings(player?.id);
   const foodMessage = formatUseFoodResultSummary(useFoodResult, source);
 
   if (writeLastResult) {
@@ -425,6 +831,50 @@ async function useFood(options = {}) {
     player,
     useFoodResult,
     message: foodMessage
+  };
+}
+
+async function useItem(itemKey, options = {}) {
+  const { writeLastResult = true } = options;
+  const id = playerIdInput.value;
+  const response = await fetch(`/api/players/${encodeURIComponent(id)}/use-item/${encodeURIComponent(itemKey)}`, {
+    method: "POST"
+  });
+
+  const text = await response.text();
+  if (!response.ok) {
+    let message = "Use item failed.";
+    try {
+      const errorPayload = JSON.parse(text);
+      if (errorPayload?.message) {
+        message = errorPayload.message;
+      }
+    } catch {
+      // keep fallback message
+    }
+
+    if (writeLastResult) {
+      writeLastResultMessages([message]);
+    }
+    showResult({ error: `Use item failed (${response.status})`, detail: text });
+    return;
+  }
+
+  const useItemResult = JSON.parse(text);
+  const player = useItemResult.player;
+  showPlayerStatus(player);
+  showCurrentEncounter(player);
+  showCurrentEnemy(player);
+  await loadHoldings(player?.id);
+  const message = formatUseItemResultSummary(useItemResult);
+  if (writeLastResult) {
+    writeLastResultMessages([message]);
+  }
+  showResult(useItemResult);
+  return {
+    player,
+    useItemResult,
+    message
   };
 }
 
@@ -455,10 +905,13 @@ async function buyShopItem(itemKey) {
   const player = purchaseResult.player;
   if (player) {
     showPlayerStatus(player);
+    showCurrentEncounter(player);
     showCurrentEnemy(player);
+    await loadHoldings(player.id);
   } else {
     showPlayerStatus(null);
     showCurrentEnemy(null);
+    showHoldings([]);
   }
 
   writeLastResultMessages([formatShopPurchaseResultSummary(purchaseResult)]);
@@ -496,7 +949,9 @@ async function setPreferredEnemy() {
   const player = JSON.parse(text);
   const preferredEnemyName = getPreferredEnemyDisplayName(player.preferredEnemyKey);
   showPlayerStatus(player);
+  showCurrentEncounter(player);
   showCurrentEnemy(player);
+  await loadHoldings(player.id);
   writeLastResultMessages([`Preferred Enemy updated: ${preferredEnemyName}.`]);
   showResult(player);
 }
@@ -521,7 +976,9 @@ async function setPowerStrikeEnabled() {
 
   const player = JSON.parse(text);
   showPlayerStatus(player);
+  showCurrentEncounter(player);
   showCurrentEnemy(player);
+  await loadHoldings(player.id);
   writeLastResultMessages([`Power Strike ${player.powerStrikeEnabled ? "enabled" : "disabled"}.`]);
   showResult(player);
 }
@@ -629,7 +1086,17 @@ document.getElementById("loadPlayerButton").addEventListener("click", loadPlayer
 document.getElementById("createPlayerButton").addEventListener("click", createPlayer);
 document.getElementById("addGoldButton").addEventListener("click", addGold);
 document.getElementById("fightButton").addEventListener("click", fight);
-document.getElementById("useFoodButton").addEventListener("click", useFood);
+document.getElementById("useFoodButton").addEventListener("click", () => useConsumableItem("food"));
+document.getElementById("usePotionButton").addEventListener("click", () => {
+  const potionItemKey = getManualConsumableItemKeyByDisplayName("Potion");
+  if (!potionItemKey) {
+    writeLastResultMessages(["Use item failed: Potion consumable is not configured."]);
+    showResult({ error: "Use item failed.", detail: "Potion consumable is not configured in shop item metadata." });
+    return;
+  }
+
+  useConsumableItem(potionItemKey);
+});
 shopItemsContainerElement.addEventListener("click", event => {
   const target = event.target;
   if (!(target instanceof HTMLElement)) {
@@ -648,9 +1115,13 @@ stopAutoFightButton.addEventListener("click", stopAutoFight);
 autoUseFoodCheckbox.addEventListener("change", setAutoUseFoodStatus);
 autoUseFoodThresholdSelect.addEventListener("change", setAutoUseFoodStatus);
 preferredEnemySelect.addEventListener("change", setPreferredEnemy);
+currentAreaSelect.addEventListener("change", setCurrentArea);
 powerStrikeCheckbox.addEventListener("change", setPowerStrikeEnabled);
 setAutoFightStatus(false);
 setAutoUseFoodStatus();
+loadAreas();
 loadShopItems();
 syncPreferredEnemyUi(null);
 syncPowerStrikeUi(null);
+showCurrentEncounter(null);
+showHoldings([]);

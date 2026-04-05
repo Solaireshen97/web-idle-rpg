@@ -64,6 +64,27 @@ app.MapGet("/api/players/{id:int}", async (IHttpClientFactory httpClientFactory,
         : Results.Ok(player);
 });
 
+app.MapGet("/api/players/{id:int}/holdings", async (IHttpClientFactory httpClientFactory, int id) =>
+{
+    var serverApi = httpClientFactory.CreateClient("ServerApi");
+    var response = await serverApi.GetAsync($"/api/players/{id}/holdings");
+
+    if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+    {
+        return Results.NotFound();
+    }
+
+    if (!response.IsSuccessStatusCode)
+    {
+        return await ForwardResponseAsContentAsync(response);
+    }
+
+    var holdings = await response.Content.ReadFromJsonAsync<PlayerItemHoldingDto[]>();
+    return holdings is null
+        ? Results.StatusCode(StatusCodes.Status502BadGateway)
+        : Results.Ok(holdings);
+});
+
 app.MapGet("/api/shop/items", async (IHttpClientFactory httpClientFactory) =>
 {
     var serverApi = httpClientFactory.CreateClient("ServerApi");
@@ -83,6 +104,27 @@ app.MapGet("/api/shop/items", async (IHttpClientFactory httpClientFactory) =>
     return items is null
         ? Results.StatusCode(StatusCodes.Status502BadGateway)
         : Results.Ok(items);
+});
+
+app.MapGet("/api/areas", async (IHttpClientFactory httpClientFactory) =>
+{
+    var serverApi = httpClientFactory.CreateClient("ServerApi");
+    var response = await serverApi.GetAsync("/api/areas");
+
+    if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+    {
+        return Results.NotFound();
+    }
+
+    if (!response.IsSuccessStatusCode)
+    {
+        return await ForwardResponseAsContentAsync(response);
+    }
+
+    var areas = await response.Content.ReadFromJsonAsync<AreaDefinitionDto[]>();
+    return areas is null
+        ? Results.StatusCode(StatusCodes.Status502BadGateway)
+        : Results.Ok(areas);
 });
 
 app.MapGet("/api/shop/items/food", async (IHttpClientFactory httpClientFactory) =>
@@ -148,6 +190,27 @@ app.MapPost("/api/players/{id:int}/use-food", async (IHttpClientFactory httpClie
         : Results.Ok(useFoodResult);
 });
 
+app.MapPost("/api/players/{id:int}/use-item/{itemKey}", async (IHttpClientFactory httpClientFactory, int id, string itemKey) =>
+{
+    var serverApi = httpClientFactory.CreateClient("ServerApi");
+    var response = await serverApi.PostAsync($"/api/players/{id}/use-item/{Uri.EscapeDataString(itemKey)}", content: null);
+
+    if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+    {
+        return Results.NotFound();
+    }
+
+    if (!response.IsSuccessStatusCode)
+    {
+        return await ForwardResponseAsContentAsync(response);
+    }
+
+    var useItemResult = await response.Content.ReadFromJsonAsync<UseItemResultDto>();
+    return useItemResult is null
+        ? Results.StatusCode(StatusCodes.Status502BadGateway)
+        : Results.Ok(useItemResult);
+});
+
 app.MapPost("/api/players/{id:int}/buy-food", async (IHttpClientFactory httpClientFactory, int id) =>
 {
     var serverApi = httpClientFactory.CreateClient("ServerApi");
@@ -194,6 +257,27 @@ app.MapPost("/api/players/{id:int}/preferred-enemy", async (IHttpClientFactory h
 {
     var serverApi = httpClientFactory.CreateClient("ServerApi");
     var response = await serverApi.PostAsJsonAsync($"/api/players/{id}/preferred-enemy", request);
+
+    if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+    {
+        return Results.NotFound();
+    }
+
+    if (!response.IsSuccessStatusCode)
+    {
+        return await ForwardResponseAsContentAsync(response);
+    }
+
+    var player = await response.Content.ReadFromJsonAsync<PlayerDto>();
+    return player is null
+        ? Results.StatusCode(StatusCodes.Status502BadGateway)
+        : Results.Ok(player);
+});
+
+app.MapPost("/api/players/{id:int}/current-area", async (IHttpClientFactory httpClientFactory, int id, SetCurrentAreaRequest request) =>
+{
+    var serverApi = httpClientFactory.CreateClient("ServerApi");
+    var response = await serverApi.PostAsJsonAsync($"/api/players/{id}/current-area", request);
 
     if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
     {

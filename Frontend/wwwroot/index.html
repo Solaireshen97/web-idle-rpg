@@ -41,6 +41,11 @@
   </section>
 
   <section>
+    <h2>Holdings (Minimal)</h2>
+    <div id="playerHoldingsContainer">No holdings loaded.</div>
+  </section>
+
+  <section>
     <h2>Preferred Enemy</h2>
     <label>
       Next New Fight Enemy
@@ -52,6 +57,24 @@
       </select>
     </label>
     <div id="preferredEnemyStatus">Preferred Enemy: Random</div>
+  </section>
+
+  <section>
+    <h2>Area</h2>
+    <label>
+      Current Area
+      <select id="currentAreaSelect"></select>
+    </label>
+    <div id="currentAreaStatus">Current Area: -</div>
+  </section>
+
+  <section>
+    <h2>Current Encounter</h2>
+    <div class="status-grid">
+      <span class="label">Name</span><span id="currentEncounterName">No active encounter</span>
+      <span class="label">Type</span><span id="currentEncounterType">-</span>
+      <span class="label">Wave</span><span id="currentEncounterWave">-</span>
+    </div>
   </section>
 
   <section>
@@ -67,6 +90,7 @@
     <h2>Actions</h2>
     <button id="fightButton" type="button">Fight</button>
     <button id="useFoodButton" type="button">Use Food</button>
+    <button id="usePotionButton" type="button">Use Potion</button>
     <button id="addGoldButton" type="button">Add +10 Gold</button>
   </section>
 

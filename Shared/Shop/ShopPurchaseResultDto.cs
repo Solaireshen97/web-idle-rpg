@@ -6,5 +6,7 @@ public sealed record ShopPurchaseResultDto(
     string ItemKey,
     string DisplayName,
     int SpentGold,
+    ResourceDeltaDto ResourcesDelta,
+    HoldingDeltaDto HoldingDelta,
     ShopItemEffectDto Effect,
     PlayerDto Player);
