@@ -268,8 +268,7 @@ app.MapPost("/api/players/{id:int}/current-area", async (GameDbContext dbContext
     }
 
     player.CurrentAreaKey = area.AreaKey;
-    ClearCurrentEncounter(player);
-    ClearCurrentEnemy(player);
+    EndCurrentEncounterRun(player);
     player.UpdatedAt = DateTime.UtcNow;
 
     await dbContext.SaveChangesAsync();
@@ -302,7 +301,7 @@ app.MapPost("/api/players/{id:int}/fight", async (GameDbContext dbContext, int i
     }
 
     EnsurePlayerCurrentArea(player, areaByKey, startingArea);
-    EnsureNormalEncounterAndEnemyForFight(player, areaByKey, enemyTemplateByKey, enemyTemplates, startingArea);
+    EnsureActiveNormalEncounterRunForFight(player, areaByKey, enemyTemplateByKey, enemyTemplates, startingArea);
 
     var enemy = GetCurrentEnemyState(player);
 
@@ -474,6 +473,12 @@ static void ClearCurrentEncounter(Player player)
     player.CurrentEncounterTotalWaves = null;
 }
 
+static void EndCurrentEncounterRun(Player player)
+{
+    ClearCurrentEncounter(player);
+    ClearCurrentEnemy(player);
+}
+
 static bool HasCurrentEncounter(Player player) =>
     !string.IsNullOrWhiteSpace(player.CurrentEncounterType)
     && !string.IsNullOrWhiteSpace(player.CurrentEncounterKey)
@@ -529,8 +534,7 @@ static async Task<FightSettlementResult> ApplyFightRoundSettlementAsync(
     if (enemyDefeated)
     {
         var enemyDefeatSettlementResult = await ApplyEnemyDefeatSettlementAsync(dbContext, player, enemy, playerCurrentHp);
-        ClearCurrentEncounter(player);
-        ClearCurrentEnemy(player);
+        EndCurrentEncounterRun(player);
         return new FightSettlementResult(
             FightSettlementBranch.EnemyDefeated,
             enemyDefeatSettlementResult.GoldReward,
@@ -542,8 +546,7 @@ static async Task<FightSettlementResult> ApplyFightRoundSettlementAsync(
     if (playerDefeated)
     {
         player.CurrentHp = DefeatSurvivalHp;
-        ClearCurrentEncounter(player);
-        ClearCurrentEnemy(player);
+        EndCurrentEncounterRun(player);
         return new FightSettlementResult(
             FightSettlementBranch.PlayerDefeated,
             0,
@@ -817,7 +820,7 @@ static void EnsurePlayerCurrentArea(
     player.CurrentAreaKey = startingArea.AreaKey;
 }
 
-static void EnsureNormalEncounterAndEnemyForFight(
+static void EnsureActiveNormalEncounterRunForFight(
     Player player,
     IReadOnlyDictionary<string, AreaDefinitionDto> areaByKey,
     IReadOnlyDictionary<string, EnemyTemplate> enemyTemplateByKey,
@@ -825,10 +828,6 @@ static void EnsureNormalEncounterAndEnemyForFight(
     AreaDefinitionDto startingArea)
 {
     EnsurePlayerCurrentArea(player, areaByKey, startingArea);
-    if (HasCurrentEncounter(player) && HasCurrentEnemy(player))
-    {
-        return;
-    }
 
     if (!TryGetAreaDefinition(areaByKey, player.CurrentAreaKey, out var currentArea))
     {
@@ -836,14 +835,36 @@ static void EnsureNormalEncounterAndEnemyForFight(
         player.CurrentAreaKey = startingArea.AreaKey;
     }
 
+    if (HasCurrentEncounter(player) && HasCurrentEnemy(player))
+    {
+        return;
+    }
+
+    if (HasCurrentEncounter(player) && !HasCurrentEnemy(player))
+    {
+        EndCurrentEncounterRun(player);
+    }
+
+    if (!HasCurrentEncounter(player))
+    {
+        StartNormalEncounterRun(player, currentArea, enemyTemplateByKey, enemyTemplates);
+    }
+}
+
+static void StartNormalEncounterRun(
+    Player player,
+    AreaDefinitionDto area,
+    IReadOnlyDictionary<string, EnemyTemplate> enemyTemplateByKey,
+    EnemyTemplate[] enemyTemplates)
+{
     var preferredEnemyKey = NormalizePreferredEnemyKey(player.PreferredEnemyKey);
-    var enemyTemplate = GetEnemyTemplateForNewFightInArea(preferredEnemyKey, currentArea, enemyTemplateByKey, enemyTemplates);
-    var encounterKey = $"normal:{currentArea.AreaKey}:{enemyTemplate.Name.ToLowerInvariant().Replace(" ", "-")}";
+    var enemyTemplate = GetEnemyTemplateForNewFightInArea(preferredEnemyKey, area, enemyTemplateByKey, enemyTemplates);
+    var encounterKey = $"normal:{area.AreaKey}:{enemyTemplate.Name.ToLowerInvariant().Replace(" ", "-")}";
     AssignCurrentEncounter(
         player,
         EncounterTypeNormal,
         encounterKey,
-        $"{currentArea.DisplayName} - Normal Encounter",
+        $"{area.DisplayName} - Normal Encounter",
         NormalEncounterSingleWaveIndex,
         NormalEncounterSingleWaveTotal);
     AssignCurrentEnemy(player, enemyTemplate);

@@ -218,7 +218,7 @@ function syncAreaSelectUi(player) {
 function showCurrentEncounter(player) {
   const encounter = player?.currentEncounter ?? null;
   if (!encounter?.isActive) {
-    currentEncounterNameElement.textContent = "No active encounter";
+    currentEncounterNameElement.textContent = "No active encounter (next Fight starts a normal run)";
     currentEncounterTypeElement.textContent = "-";
     currentEncounterWaveElement.textContent = "-";
     return;
@@ -627,6 +627,7 @@ async function addGold() {
 
 function buildFightMessage(fightResult) {
   const statusText = fightResult.enemyDefeated ? "Enemy Defeated" : (fightResult.playerDefeated ? "Player Defeated" : "Ongoing");
+  const encounterStateText = buildEncounterStateText(fightResult?.player?.currentEncounter);
   const playerActions = Array.isArray(fightResult.playerActions) ? fightResult.playerActions : [];
   const enemyActions = Array.isArray(fightResult.enemyActions) ? fightResult.enemyActions : [];
   const actionOrderText = formatPlayerActionOrder(playerActions);
@@ -638,8 +639,21 @@ function buildFightMessage(fightResult) {
   const roundDamageText = `Round Damage -> You: ${fightResult.playerDamageDealt}, Enemy: ${fightResult.enemyDamageDealt} | Enemy Turn: ${enemyActionOrderText} | Enemy Action Damage: ${enemyActionDamageText}`;
   const rewardText = formatFightRewardText(fightResult);
   const levelText = fightResult.leveledUp ? ` | LEVEL UP! Lv${fightResult.player.level}` : "";
-  const resultText = `Status: ${statusText} | Player Turn: ${actionOrderText} | Action Damage: ${actionDamageText} | ${enemyHpText} | ${roundDamageText} | ${rewardText}${levelText} | Player HP: ${fightResult.player.currentHp}/${fightResult.player.maxHp}`;
+  const resultText = `Status: ${statusText} | ${encounterStateText} | Player Turn: ${actionOrderText} | Action Damage: ${actionDamageText} | ${enemyHpText} | ${roundDamageText} | ${rewardText}${levelText} | Player HP: ${fightResult.player.currentHp}/${fightResult.player.maxHp}`;
   return `${enemyText} | ${resultText} | ${fightResult.summary}`;
+}
+
+function buildEncounterStateText(currentEncounter) {
+  if (!currentEncounter?.isActive) {
+    return "Encounter: Ended/None";
+  }
+
+  const encounterName = typeof currentEncounter.encounterName === "string" && currentEncounter.encounterName.trim().length > 0
+    ? currentEncounter.encounterName.trim()
+    : "Encounter";
+  const waveIndex = Number.isFinite(currentEncounter.waveIndex) ? currentEncounter.waveIndex : 1;
+  const totalWaves = Number.isFinite(currentEncounter.totalWaves) ? currentEncounter.totalWaves : 1;
+  return `Encounter: Active (${encounterName} ${waveIndex}/${totalWaves})`;
 }
 
 function formatFightRewardText(fightResult) {
