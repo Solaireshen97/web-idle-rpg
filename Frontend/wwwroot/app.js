@@ -56,8 +56,11 @@ let currentAreas = [];
 const preferredEnemyDisplayNameByKey = {
   random: "Random",
   "training-slime": "Training Slime",
+  "forest-spider": "Forest Spider",
   wolf: "Wolf",
-  goblin: "Goblin"
+  goblin: "Goblin",
+  "defias-bandit": "Defias Bandit",
+  "harvest-golem": "Harvest Golem"
 };
 
 function getNormalizedPreferredEnemyKey(preferredEnemyKey, allowedEnemyKeys = null) {

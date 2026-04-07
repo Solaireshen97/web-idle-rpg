@@ -26,8 +26,11 @@ const string FoodItemKey = "food";
 const string PotionItemKey = "potion";
 const string PreferredEnemyRandomKey = "random";
 const string PreferredEnemyTrainingSlimeKey = "training-slime";
+const string PreferredEnemyForestSpiderKey = "forest-spider";
 const string PreferredEnemyWolfKey = "wolf";
 const string PreferredEnemyGoblinKey = "goblin";
+const string PreferredEnemyDefiasBanditKey = "defias-bandit";
+const string PreferredEnemyHarvestGolemKey = "harvest-golem";
 const string AreaElwynnForestKey = "elwynn-forest";
 const string AreaWestfallKey = "westfall";
 const string EncounterTypeNormal = "normal";
@@ -37,8 +40,11 @@ const int NormalEncounterSingleWaveTotal = 1;
 var enemyTemplateByKey = new Dictionary<string, EnemyTemplate>(StringComparer.OrdinalIgnoreCase)
 {
     [PreferredEnemyTrainingSlimeKey] = new EnemyTemplate("Training Slime", 24, 2, 5, 5),
-    [PreferredEnemyWolfKey] = new EnemyTemplate("Wolf", 36, 3, 9, 8),
-    [PreferredEnemyGoblinKey] = new EnemyTemplate("Goblin", 52, 4, 12, 11),
+    [PreferredEnemyForestSpiderKey] = new EnemyTemplate("Forest Spider", 30, 3, 7, 7),
+    [PreferredEnemyWolfKey] = new EnemyTemplate("Wolf", 38, 3, 9, 10),
+    [PreferredEnemyGoblinKey] = new EnemyTemplate("Goblin", 58, 5, 14, 13),
+    [PreferredEnemyDefiasBanditKey] = new EnemyTemplate("Defias Bandit", 64, 5, 16, 15),
+    [PreferredEnemyHarvestGolemKey] = new EnemyTemplate("Harvest Golem", 72, 6, 18, 18),
 };
 
 var enemyTemplates = enemyTemplateByKey.Values.ToArray();
@@ -49,14 +55,14 @@ var areaDefinitions = new[]
         DisplayName: "Elwynn Forest",
         UnlockLevel: 1,
         IsStartingArea: true,
-        NormalEnemyKeys: new[] { PreferredEnemyTrainingSlimeKey, PreferredEnemyWolfKey },
+        NormalEnemyKeys: new[] { PreferredEnemyTrainingSlimeKey, PreferredEnemyForestSpiderKey, PreferredEnemyWolfKey },
         DungeonKeys: new[] { "elwynn-forest-training-grounds" }),
     new AreaDefinitionDto(
         AreaKey: AreaWestfallKey,
         DisplayName: "Westfall",
         UnlockLevel: 10,
         IsStartingArea: false,
-        NormalEnemyKeys: new[] { PreferredEnemyWolfKey, PreferredEnemyGoblinKey },
+        NormalEnemyKeys: new[] { PreferredEnemyGoblinKey, PreferredEnemyDefiasBanditKey, PreferredEnemyHarvestGolemKey },
         DungeonKeys: new[] { "westfall-abandoned-mine" })
 };
 var areaByKey = areaDefinitions.ToDictionary(area => area.AreaKey, StringComparer.OrdinalIgnoreCase);
@@ -1029,8 +1035,11 @@ static bool TryGetPreferredEnemyKey(string? preferredEnemyKey, out string normal
     {
         case PreferredEnemyRandomKey:
         case PreferredEnemyTrainingSlimeKey:
+        case PreferredEnemyForestSpiderKey:
         case PreferredEnemyWolfKey:
         case PreferredEnemyGoblinKey:
+        case PreferredEnemyDefiasBanditKey:
+        case PreferredEnemyHarvestGolemKey:
             return true;
         default:
             normalizedKey = PreferredEnemyRandomKey;
