@@ -29,6 +29,7 @@ const preferredEnemySelect = document.getElementById("preferredEnemySelect");
 const preferredEnemyStatusElement = document.getElementById("preferredEnemyStatus");
 const currentAreaSelect = document.getElementById("currentAreaSelect");
 const currentAreaStatusElement = document.getElementById("currentAreaStatus");
+const currentAreaProgressStatusElement = document.getElementById("currentAreaProgressStatus");
 const currentEncounterNameElement = document.getElementById("currentEncounterName");
 const currentEncounterTypeElement = document.getElementById("currentEncounterType");
 const currentEncounterWaveElement = document.getElementById("currentEncounterWave");
@@ -174,22 +175,44 @@ function syncAreaSelectUi(player) {
   if (currentAreas.length <= 0) {
     currentAreaSelect.innerHTML = "";
     currentAreaStatusElement.textContent = "Current Area: -";
+    currentAreaProgressStatusElement.textContent = "Area Progression: -";
     return;
   }
 
-  const playerLevel = Number.isFinite(player?.level) ? player.level : 1;
+  const playerLevel = Number.isFinite(player?.level) ? player.level : 0;
   const selectedArea = getCurrentArea(player);
+  const unlockedAreas = currentAreas.filter(area => playerLevel >= area.unlockLevel);
+  const lockedAreas = currentAreas.filter(area => playerLevel < area.unlockLevel);
+  const nextUnlockArea = lockedAreas.length > 0
+    ? lockedAreas.reduce((currentMinArea, area) =>
+      area.unlockLevel < currentMinArea.unlockLevel ? area : currentMinArea, lockedAreas[0])
+    : null;
 
   currentAreaSelect.innerHTML = currentAreas.map(area => {
     const locked = playerLevel < area.unlockLevel;
-    const lockSuffix = locked ? ` (Unlock Lv${area.unlockLevel})` : "";
+    const lockSuffix = locked ? ` (Locked · Unlock Lv${area.unlockLevel})` : " (Unlocked)";
     return `<option value="${area.areaKey}" ${locked ? "disabled" : ""}>${area.displayName}${lockSuffix}</option>`;
   }).join("");
 
   if (selectedArea) {
     currentAreaSelect.value = selectedArea.areaKey;
-    currentAreaStatusElement.textContent = `Current Area: ${selectedArea.displayName}`;
+    currentAreaStatusElement.textContent = `Current Area: ${selectedArea.displayName} (Unlock Lv${selectedArea.unlockLevel})`;
   }
+
+  const unlockedAreaNames = unlockedAreas.map(area => area.displayName).join(", ");
+  const lockedAreaNames = lockedAreas.map(area => `${area.displayName} (Lv${area.unlockLevel})`).join(", ");
+  if (!player) {
+    currentAreaProgressStatusElement.textContent = "Area Progression: Load player to view unlock progress.";
+    return;
+  }
+
+  if (!nextUnlockArea) {
+    currentAreaProgressStatusElement.textContent = `Area Progression: All current areas unlocked. Unlocked: ${unlockedAreaNames}.`;
+    return;
+  }
+
+  currentAreaProgressStatusElement.textContent =
+    `Area Progression: Unlocked [${unlockedAreaNames || "-"}] | Locked [${lockedAreaNames || "-"}] | Next Area Unlock: ${nextUnlockArea.displayName} at Lv${nextUnlockArea.unlockLevel}.`;
 }
 
 function showCurrentEncounter(player) {
@@ -484,7 +507,7 @@ async function setCurrentArea() {
   showCurrentEncounter(player);
   showCurrentEnemy(player);
   await loadHoldings(player.id);
-  writeLastResultMessages([`Current Area updated: ${player.currentAreaDisplayName}.`]);
+  writeLastResultMessages([`Current Area updated: ${player.currentAreaDisplayName}. Current encounter and enemy were reset.`]);
   showResult(player);
 }
 
