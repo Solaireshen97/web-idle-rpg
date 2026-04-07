@@ -6,12 +6,14 @@ using Shared.Shop;
 
 const int GoldIncrementAmount = 10;
 const int FoodHealAmount = 10;
+const int PotionHealAmount = 20;
 const int UseFoodConsumedAmount = 1;
 const int BaseExpPerLevel = 10;
 const int ExpPerLevelGrowth = 5;
 const int LevelUpAttackBonus = 1;
 const int LevelUpMaxHpBonus = 5;
 const int DefeatSurvivalHp = 1;
+const int FoodRewardPerEnemyDefeat = 1;
 const int PowerStrikeBonusDamage = 1;
 const int PowerStrikeCooldownTurns = 2;
 const string PowerStrikeSkillName = "Power Strike";
@@ -19,36 +21,115 @@ const string BasicAttackSkillName = "Basic Attack";
 const string EnemyJabActionName = "Enemy Jab";
 const string EnemyAttackActionName = "Enemy Attack";
 const string PlayersTableName = "Players";
+const string PlayerItemHoldingsTableName = "PlayerItemHoldings";
+const string FoodItemKey = "food";
+const string PotionItemKey = "potion";
 const string PreferredEnemyRandomKey = "random";
 const string PreferredEnemyTrainingSlimeKey = "training-slime";
+const string PreferredEnemyForestSpiderKey = "forest-spider";
 const string PreferredEnemyWolfKey = "wolf";
 const string PreferredEnemyGoblinKey = "goblin";
+const string PreferredEnemyDefiasBanditKey = "defias-bandit";
+const string PreferredEnemyHarvestGolemKey = "harvest-golem";
+const string AreaElwynnForestKey = "elwynn-forest";
+const string AreaWestfallKey = "westfall";
+const string EncounterTypeNormal = "normal";
+const string EncounterTypeDungeon = "dungeon";
+const int NormalEncounterSingleWaveIndex = 1;
+const int NormalEncounterSingleWaveTotal = 1;
 
 var enemyTemplateByKey = new Dictionary<string, EnemyTemplate>(StringComparer.OrdinalIgnoreCase)
 {
     [PreferredEnemyTrainingSlimeKey] = new EnemyTemplate("Training Slime", 24, 2, 5, 5),
-    [PreferredEnemyWolfKey] = new EnemyTemplate("Wolf", 36, 3, 9, 8),
-    [PreferredEnemyGoblinKey] = new EnemyTemplate("Goblin", 52, 4, 12, 11),
+    [PreferredEnemyForestSpiderKey] = new EnemyTemplate("Forest Spider", 30, 3, 7, 7),
+    [PreferredEnemyWolfKey] = new EnemyTemplate("Wolf", 38, 3, 9, 10),
+    [PreferredEnemyGoblinKey] = new EnemyTemplate("Goblin", 58, 5, 14, 13),
+    [PreferredEnemyDefiasBanditKey] = new EnemyTemplate("Defias Bandit", 64, 5, 16, 15),
+    [PreferredEnemyHarvestGolemKey] = new EnemyTemplate("Harvest Golem", 72, 6, 18, 18),
 };
 
 var enemyTemplates = enemyTemplateByKey.Values.ToArray();
+var areaDefinitions = new[]
+{
+    new AreaDefinitionDto(
+        AreaKey: AreaElwynnForestKey,
+        DisplayName: "Elwynn Forest",
+        UnlockLevel: 1,
+        IsStartingArea: true,
+        NormalEnemyKeys: new[] { PreferredEnemyTrainingSlimeKey, PreferredEnemyForestSpiderKey, PreferredEnemyWolfKey },
+        DungeonKeys: new[] { "elwynn-forest-training-grounds" }),
+    new AreaDefinitionDto(
+        AreaKey: AreaWestfallKey,
+        DisplayName: "Westfall",
+        UnlockLevel: 10,
+        IsStartingArea: false,
+        NormalEnemyKeys: new[] { PreferredEnemyGoblinKey, PreferredEnemyDefiasBanditKey, PreferredEnemyHarvestGolemKey },
+        DungeonKeys: new[] { "westfall-abandoned-mine" })
+};
+var areaByKey = areaDefinitions.ToDictionary(area => area.AreaKey, StringComparer.OrdinalIgnoreCase);
+var startingArea = areaDefinitions.First(area => area.IsStartingArea);
+var dungeonDefinitions = new[]
+{
+    new DungeonDefinitionDto(
+        DungeonKey: "elwynn-forest-training-grounds",
+        DisplayName: "Elwynn Forest Training Grounds",
+        AreaKey: AreaElwynnForestKey,
+        UnlockLevel: 1,
+        Waves: new[]
+        {
+            new DungeonWaveDefinitionDto(
+                WaveIndex: 1,
+                EnemyKeys: new[] { PreferredEnemyTrainingSlimeKey }),
+            new DungeonWaveDefinitionDto(
+                WaveIndex: 2,
+                EnemyKeys: new[] { PreferredEnemyForestSpiderKey })
+        }),
+    new DungeonDefinitionDto(
+        DungeonKey: "westfall-abandoned-mine",
+        DisplayName: "Westfall Abandoned Mine",
+        AreaKey: AreaWestfallKey,
+        UnlockLevel: 10,
+        Waves: new[]
+        {
+            new DungeonWaveDefinitionDto(
+                WaveIndex: 1,
+                EnemyKeys: new[] { PreferredEnemyGoblinKey }),
+            new DungeonWaveDefinitionDto(
+                WaveIndex: 2,
+                EnemyKeys: new[] { PreferredEnemyDefiasBanditKey })
+        })
+};
+var dungeonByKey = dungeonDefinitions.ToDictionary(dungeon => dungeon.DungeonKey, StringComparer.OrdinalIgnoreCase);
 var shopItems = new[]
 {
     new ShopItemDefinitionDto(
         ItemKey: "food",
         DisplayName: "Food",
         GoldPrice: 5,
-        Effect: new ShopItemEffectDto(FoodDelta: 1)),
+        Effect: new ShopItemEffectDto(FoodDelta: 1, HpRecover: FoodHealAmount),
+        ConsumableUse: new ConsumableUseMetadataDto(
+            ConsumedAmount: UseFoodConsumedAmount,
+            HpRecover: FoodHealAmount)),
     new ShopItemDefinitionDto(
         ItemKey: "food-pack",
         DisplayName: "Food Pack",
         GoldPrice: 12,
-        Effect: new ShopItemEffectDto(FoodDelta: 3)),
+        Effect: new ShopItemEffectDto(FoodDelta: 3, HpRecover: FoodHealAmount),
+        ConsumableUse: null),
     new ShopItemDefinitionDto(
         ItemKey: "food-crate",
         DisplayName: "Food Crate",
         GoldPrice: 18,
-        Effect: new ShopItemEffectDto(FoodDelta: 5))
+        Effect: new ShopItemEffectDto(FoodDelta: 5, HpRecover: FoodHealAmount),
+        ConsumableUse: null),
+    new ShopItemDefinitionDto(
+        ItemKey: PotionItemKey,
+        DisplayName: "Potion",
+        GoldPrice: 10,
+        Effect: new ShopItemEffectDto(FoodDelta: 0, HpRecover: PotionHealAmount),
+        ConsumableUse: new ConsumableUseMetadataDto(
+            ConsumedAmount: 1,
+            HpRecover: PotionHealAmount))
 };
 var shopItemByKey = shopItems.ToDictionary(item => item.ItemKey, StringComparer.OrdinalIgnoreCase);
 
@@ -68,12 +149,15 @@ using (var scope = app.Services.CreateScope())
     var dbContext = scope.ServiceProvider.GetRequiredService<GameDbContext>();
     dbContext.Database.EnsureCreated();
     EnsurePlayerSchema(dbContext);
+    EnsurePlayerItemHoldingsSchema(dbContext);
 }
 
 app.MapGet("/api/ping", () => Results.Ok(new { message = "pong" }));
 
 app.MapGet("/api/shop/items", () => Results.Ok(shopItems));
 app.MapGet("/api/shop/items/food", () => Results.Ok(shopItemByKey["food"]));
+app.MapGet("/api/areas", () => Results.Ok(areaDefinitions));
+app.MapGet("/api/dungeons", () => Results.Ok(dungeonDefinitions));
 
 app.MapPost("/api/players", async (GameDbContext dbContext, CreatePlayerRequest request) =>
 {
@@ -90,15 +174,32 @@ app.MapPost("/api/players", async (GameDbContext dbContext, CreatePlayerRequest 
 
     dbContext.Players.Add(player);
     await dbContext.SaveChangesAsync();
-
-    var playerDto = ToPlayerDto(player);
+    var playerDto = await BuildPlayerDtoWithFoodProjectionAsync(dbContext, player);
     return Results.Created($"/api/players/{player.Id}", playerDto);
 });
 
 app.MapGet("/api/players/{id:int}", async (GameDbContext dbContext, int id) =>
 {
     var player = await dbContext.Players.FindAsync(id);
-    return player is null ? Results.NotFound() : Results.Ok(ToPlayerDto(player));
+    if (player is null)
+    {
+        return Results.NotFound();
+    }
+
+    var playerDto = await BuildPlayerDtoWithFoodProjectionAsync(dbContext, player);
+    return Results.Ok(playerDto);
+});
+
+app.MapGet("/api/players/{id:int}/holdings", async (GameDbContext dbContext, int id) =>
+{
+    var player = await dbContext.Players.FindAsync(id);
+    if (player is null)
+    {
+        return Results.NotFound();
+    }
+
+    var holdings = await BuildPlayerItemHoldingDtosAsync(dbContext, player);
+    return Results.Ok(holdings);
 });
 
 app.MapPost("/api/players/{id:int}/gold", async (GameDbContext dbContext, int id) =>
@@ -113,7 +214,8 @@ app.MapPost("/api/players/{id:int}/gold", async (GameDbContext dbContext, int id
     player.UpdatedAt = DateTime.UtcNow;
 
     await dbContext.SaveChangesAsync();
-    return Results.Ok(ToPlayerDto(player));
+    var playerDto = await BuildPlayerDtoWithFoodProjectionAsync(dbContext, player);
+    return Results.Ok(playerDto);
 });
 
 app.MapPost("/api/players/{id:int}/use-food", async (GameDbContext dbContext, int id) =>
@@ -124,24 +226,30 @@ app.MapPost("/api/players/{id:int}/use-food", async (GameDbContext dbContext, in
         return Results.NotFound();
     }
 
-    if (player.Food <= 0)
+    var execution = await TryUseConsumableItemAsync(dbContext, player, FoodItemKey, shopItemByKey);
+    if (!execution.Success)
     {
-        return Results.BadRequest(new { message = "Not enough food." });
+        return BuildConsumableUseErrorResult(execution.StatusCode, execution.Message);
     }
 
-    var hpBeforeUseFood = player.CurrentHp;
-    player.Food -= UseFoodConsumedAmount;
-    player.CurrentHp = Math.Min(player.MaxHp, player.CurrentHp + FoodHealAmount);
-    var recoveredHp = Math.Max(0, player.CurrentHp - hpBeforeUseFood);
-    player.UpdatedAt = DateTime.UtcNow;
+    return Results.Ok(BuildUseFoodResultFromUseItemResult(execution.UseItemResult!));
+});
 
-    await dbContext.SaveChangesAsync();
-    return Results.Ok(new UseFoodResultDto(
-        ActionName: "Use Food",
-        ResourceKey: "food",
-        ConsumedAmount: UseFoodConsumedAmount,
-        RecoveredHp: recoveredHp,
-        Player: ToPlayerDto(player)));
+app.MapPost("/api/players/{id:int}/use-item/{itemKey}", async (GameDbContext dbContext, int id, string itemKey) =>
+{
+    var player = await dbContext.Players.FindAsync(id);
+    if (player is null)
+    {
+        return Results.NotFound();
+    }
+
+    var execution = await TryUseConsumableItemAsync(dbContext, player, itemKey, shopItemByKey);
+    if (!execution.Success)
+    {
+        return BuildConsumableUseErrorResult(execution.StatusCode, execution.Message);
+    }
+
+    return Results.Ok(execution.UseItemResult);
 });
 
 app.MapPost("/api/players/{id:int}/buy-food", async (GameDbContext dbContext, int id) =>
@@ -171,7 +279,70 @@ app.MapPost("/api/players/{id:int}/preferred-enemy", async (GameDbContext dbCont
     player.UpdatedAt = DateTime.UtcNow;
 
     await dbContext.SaveChangesAsync();
-    return Results.Ok(ToPlayerDto(player));
+    var playerDto = await BuildPlayerDtoWithFoodProjectionAsync(dbContext, player);
+    return Results.Ok(playerDto);
+});
+
+app.MapPost("/api/players/{id:int}/current-area", async (GameDbContext dbContext, int id, SetCurrentAreaRequest request) =>
+{
+    var player = await dbContext.Players.FindAsync(id);
+    if (player is null)
+    {
+        return Results.NotFound();
+    }
+
+    if (!TryGetAreaDefinition(areaByKey, request.AreaKey, out var area))
+    {
+        return Results.BadRequest(new { message = "Invalid areaKey." });
+    }
+
+    if (player.Level < area.UnlockLevel)
+    {
+        return Results.BadRequest(new { message = $"Area '{area.DisplayName}' unlocks at level {area.UnlockLevel}." });
+    }
+
+    player.CurrentAreaKey = area.AreaKey;
+    EndCurrentEncounterRun(player);
+    player.UpdatedAt = DateTime.UtcNow;
+
+    await dbContext.SaveChangesAsync();
+    var playerDto = await BuildPlayerDtoWithFoodProjectionAsync(dbContext, player);
+    return Results.Ok(playerDto);
+});
+
+app.MapPost("/api/players/{id:int}/enter-dungeon/{dungeonKey}", async (GameDbContext dbContext, int id, string dungeonKey) =>
+{
+    var player = await dbContext.Players.FindAsync(id);
+    if (player is null)
+    {
+        return Results.NotFound();
+    }
+
+    EnsurePlayerCurrentArea(player, areaByKey, startingArea);
+    if (!TryGetDungeonDefinition(dungeonByKey, dungeonKey, out var dungeon))
+    {
+        return Results.BadRequest(new { message = "Invalid dungeonKey." });
+    }
+
+    if (!dungeon.AreaKey.Equals(ResolveCurrentAreaKey(player), StringComparison.OrdinalIgnoreCase))
+    {
+        return Results.BadRequest(new { message = $"Dungeon '{dungeon.DisplayName}' is not in current area '{ResolveAreaDisplayNameByKey(ResolveCurrentAreaKey(player))}'." });
+    }
+
+    if (player.Level < dungeon.UnlockLevel)
+    {
+        return Results.BadRequest(new { message = $"Dungeon '{dungeon.DisplayName}' unlocks at level {dungeon.UnlockLevel}." });
+    }
+
+    if (!TryStartDungeonEncounterRun(player, dungeon, enemyTemplateByKey, out var startErrorMessage))
+    {
+        return Results.BadRequest(new { message = startErrorMessage });
+    }
+
+    player.UpdatedAt = DateTime.UtcNow;
+    await dbContext.SaveChangesAsync();
+    var playerDto = await BuildPlayerDtoWithFoodProjectionAsync(dbContext, player);
+    return Results.Ok(playerDto);
 });
 
 app.MapPost("/api/players/{id:int}/power-strike", async (GameDbContext dbContext, int id, SetPowerStrikeRequest request) =>
@@ -186,7 +357,8 @@ app.MapPost("/api/players/{id:int}/power-strike", async (GameDbContext dbContext
     player.UpdatedAt = DateTime.UtcNow;
 
     await dbContext.SaveChangesAsync();
-    return Results.Ok(ToPlayerDto(player));
+    var playerDto = await BuildPlayerDtoWithFoodProjectionAsync(dbContext, player);
+    return Results.Ok(playerDto);
 });
 
 app.MapPost("/api/players/{id:int}/fight", async (GameDbContext dbContext, int id) =>
@@ -197,12 +369,8 @@ app.MapPost("/api/players/{id:int}/fight", async (GameDbContext dbContext, int i
         return Results.NotFound();
     }
 
-    if (!HasCurrentEnemy(player))
-    {
-        var preferredEnemyKey = NormalizePreferredEnemyKey(player.PreferredEnemyKey);
-        var enemyTemplate = GetEnemyTemplateForNewFight(preferredEnemyKey, enemyTemplateByKey, enemyTemplates);
-        AssignCurrentEnemy(player, enemyTemplate);
-    }
+    EnsurePlayerCurrentArea(player, areaByKey, startingArea);
+    EnsureActiveEncounterRunForFight(player, areaByKey, dungeonByKey, enemyTemplateByKey, enemyTemplates, startingArea);
 
     var enemy = GetCurrentEnemyState(player);
 
@@ -235,8 +403,11 @@ app.MapPost("/api/players/{id:int}/fight", async (GameDbContext dbContext, int i
     }
 
     var playerDefeated = playerCurrentHp <= 0;
-    var settlementResult = ApplyFightRoundSettlement(
+    var settlementResult = await ApplyFightRoundSettlementAsync(
+        dbContext,
         player,
+        dungeonByKey,
+        enemyTemplateByKey,
         enemy,
         enemyCurrentHp,
         playerCurrentHp,
@@ -255,11 +426,13 @@ app.MapPost("/api/players/{id:int}/fight", async (GameDbContext dbContext, int i
         playerDamageDealt,
         enemyDamageDealt,
         enemyCurrentHp);
+    var playerDto = await BuildPlayerDtoWithFoodProjectionAsync(dbContext, player);
 
     return Results.Ok(new FightResultDto(
         enemyDefeated,
         settlementResult.GoldReward,
         settlementResult.ExpReward,
+        BuildFightRewardResultDto(settlementResult),
         settlementResult.LeveledUp,
         enemy.Name,
         enemy.MaxHp,
@@ -272,7 +445,7 @@ app.MapPost("/api/players/{id:int}/fight", async (GameDbContext dbContext, int i
         enemyDefeated,
         playerDefeated,
         summary,
-        ToPlayerDto(player)));
+        playerDto));
 });
 
 app.Run();
@@ -294,6 +467,9 @@ static PlayerDto ToPlayerDto(Player player) =>
         player.CurrentEnemyAttack,
         player.CurrentEnemyGoldReward,
         player.CurrentEnemyExperienceReward,
+        ResolveCurrentAreaKey(player),
+        ResolveAreaDisplayNameByKey(ResolveCurrentAreaKey(player)),
+        BuildCurrentEncounterMetadata(player),
         NormalizePreferredEnemyKey(player.PreferredEnemyKey),
         player.PowerStrikeEnabled,
         Math.Max(0, player.PowerStrikeCooldownRemaining),
@@ -344,11 +520,84 @@ static void ClearCurrentEnemy(Player player)
     player.CurrentEnemyExperienceReward = null;
 }
 
+static void AssignCurrentEncounter(
+    Player player,
+    string encounterType,
+    string encounterKey,
+    string encounterName,
+    int waveIndex,
+    int totalWaves)
+{
+    player.CurrentEncounterType = encounterType;
+    player.CurrentEncounterKey = encounterKey;
+    player.CurrentEncounterName = encounterName;
+    player.CurrentEncounterWaveIndex = waveIndex;
+    player.CurrentEncounterTotalWaves = totalWaves;
+}
+
+static void ClearCurrentEncounter(Player player)
+{
+    player.CurrentEncounterType = null;
+    player.CurrentEncounterKey = null;
+    player.CurrentEncounterName = null;
+    player.CurrentEncounterWaveIndex = null;
+    player.CurrentEncounterTotalWaves = null;
+}
+
+static void EndCurrentEncounterRun(Player player)
+{
+    ClearCurrentEncounter(player);
+    ClearCurrentEnemy(player);
+}
+
+static bool HasCurrentEncounter(Player player) =>
+    !string.IsNullOrWhiteSpace(player.CurrentEncounterType)
+    && !string.IsNullOrWhiteSpace(player.CurrentEncounterKey)
+    && !string.IsNullOrWhiteSpace(player.CurrentEncounterName)
+    && player.CurrentEncounterWaveIndex.HasValue
+    && player.CurrentEncounterTotalWaves.HasValue;
+
+static string ResolveCurrentAreaKey(Player player)
+{
+    if (string.IsNullOrWhiteSpace(player.CurrentAreaKey))
+    {
+        return AreaElwynnForestKey;
+    }
+
+    return player.CurrentAreaKey.Trim().ToLowerInvariant();
+}
+
+static string ResolveAreaDisplayNameByKey(string areaKey) =>
+    areaKey switch
+    {
+        AreaWestfallKey => "Westfall",
+        _ => "Elwynn Forest"
+    };
+
+static EncounterMetadataDto? BuildCurrentEncounterMetadata(Player player)
+{
+    if (!HasCurrentEncounter(player))
+    {
+        return null;
+    }
+
+    return new EncounterMetadataDto(
+        IsActive: true,
+        EncounterType: player.CurrentEncounterType!,
+        EncounterKey: player.CurrentEncounterKey!,
+        EncounterName: player.CurrentEncounterName!,
+        WaveIndex: Math.Max(1, player.CurrentEncounterWaveIndex!.Value),
+        TotalWaves: Math.Max(1, player.CurrentEncounterTotalWaves!.Value));
+}
+
 static int GetRequiredExpForNextLevel(int currentLevel) =>
     BaseExpPerLevel + (currentLevel - 1) * ExpPerLevelGrowth;
 
-static FightSettlementResult ApplyFightRoundSettlement(
+static async Task<FightSettlementResult> ApplyFightRoundSettlementAsync(
+    GameDbContext dbContext,
     Player player,
+    IReadOnlyDictionary<string, DungeonDefinitionDto> dungeonByKey,
+    IReadOnlyDictionary<string, EnemyTemplate> enemyTemplateByKey,
     CurrentEnemyState enemy,
     int enemyCurrentHp,
     int playerCurrentHp,
@@ -357,21 +606,26 @@ static FightSettlementResult ApplyFightRoundSettlement(
 {
     if (enemyDefeated)
     {
-        var enemyDefeatSettlementResult = ApplyEnemyDefeatSettlement(player, enemy, playerCurrentHp);
-        ClearCurrentEnemy(player);
+        var enemyDefeatSettlementResult = await ApplyEnemyDefeatSettlementAsync(dbContext, player, enemy, playerCurrentHp);
+        if (!TryAdvanceDungeonEncounterWaveIfNeeded(player, dungeonByKey, enemyTemplateByKey))
+        {
+            EndCurrentEncounterRun(player);
+        }
         return new FightSettlementResult(
             FightSettlementBranch.EnemyDefeated,
             enemyDefeatSettlementResult.GoldReward,
             enemyDefeatSettlementResult.ExpReward,
+            enemyDefeatSettlementResult.FoodReward,
             enemyDefeatSettlementResult.LeveledUp);
     }
 
     if (playerDefeated)
     {
         player.CurrentHp = DefeatSurvivalHp;
-        ClearCurrentEnemy(player);
+        EndCurrentEncounterRun(player);
         return new FightSettlementResult(
             FightSettlementBranch.PlayerDefeated,
+            0,
             0,
             0,
             false);
@@ -383,10 +637,12 @@ static FightSettlementResult ApplyFightRoundSettlement(
         FightSettlementBranch.Ongoing,
         0,
         0,
+        0,
         false);
 }
 
-static EnemyDefeatSettlementResult ApplyEnemyDefeatSettlement(
+static async Task<EnemyDefeatSettlementResult> ApplyEnemyDefeatSettlementAsync(
+    GameDbContext dbContext,
     Player player,
     CurrentEnemyState enemy,
     int playerCurrentHp)
@@ -395,7 +651,9 @@ static EnemyDefeatSettlementResult ApplyEnemyDefeatSettlement(
     var expReward = enemy.ExperienceReward;
     player.Gold += goldReward;
     player.Experience += expReward;
-    player.Food += 1;
+    var foodHolding = await GetOrCreateAndPersistFoodHoldingAsync(dbContext, player);
+    UpdateItemHoldingQuantityInMemory(foodHolding, FoodRewardPerEnemyDefeat);
+    SyncFoodProjection(player, foodHolding);
     player.CurrentHp = Math.Max(0, playerCurrentHp);
 
     var levelUpHpRecovery = 0;
@@ -424,6 +682,7 @@ static EnemyDefeatSettlementResult ApplyEnemyDefeatSettlement(
     return new EnemyDefeatSettlementResult(
         goldReward,
         expReward,
+        FoodRewardPerEnemyDefeat,
         leveledUp);
 }
 
@@ -438,7 +697,7 @@ static string BuildFightSummary(
     settlementResult.Branch switch
     {
         FightSettlementBranch.EnemyDefeated =>
-            $"{player.Name} defeated {enemy.Name} and earned {settlementResult.GoldReward} gold, {settlementResult.ExpReward} EXP, 1 Food."
+            $"{player.Name} defeated {enemy.Name} and earned {settlementResult.GoldReward} gold, {settlementResult.ExpReward} EXP, {settlementResult.FoodReward} Food."
             + (settlementResult.LeveledUp ? $" Level up! Now Lv{player.Level}." : ""),
         FightSettlementBranch.PlayerDefeated =>
             $"{player.Name} was defeated by {enemy.Name}. Enemy was reset. HP is now {player.CurrentHp}/{player.MaxHp}. Use Food before continuing.",
@@ -458,9 +717,65 @@ static void EnsurePlayerSchema(GameDbContext dbContext)
     AddPlayerColumnIfMissing(dbContext, existingColumns, "CurrentEnemyAttack");
     AddPlayerColumnIfMissing(dbContext, existingColumns, "CurrentEnemyGoldReward");
     AddPlayerColumnIfMissing(dbContext, existingColumns, "CurrentEnemyExperienceReward");
+    AddPlayerColumnIfMissing(dbContext, existingColumns, "CurrentAreaKey");
+    AddPlayerColumnIfMissing(dbContext, existingColumns, "CurrentEncounterType");
+    AddPlayerColumnIfMissing(dbContext, existingColumns, "CurrentEncounterKey");
+    AddPlayerColumnIfMissing(dbContext, existingColumns, "CurrentEncounterName");
+    AddPlayerColumnIfMissing(dbContext, existingColumns, "CurrentEncounterWaveIndex");
+    AddPlayerColumnIfMissing(dbContext, existingColumns, "CurrentEncounterTotalWaves");
     AddPlayerColumnIfMissing(dbContext, existingColumns, "PreferredEnemyKey");
     AddPlayerColumnIfMissing(dbContext, existingColumns, "PowerStrikeEnabled");
     AddPlayerColumnIfMissing(dbContext, existingColumns, "PowerStrikeCooldownRemaining");
+}
+
+static void EnsurePlayerItemHoldingsSchema(GameDbContext dbContext)
+{
+    var existingTables = GetSqliteTableNames(dbContext);
+    if (!existingTables.Contains(PlayerItemHoldingsTableName))
+    {
+        dbContext.Database.ExecuteSqlRaw($@"
+CREATE TABLE ""{PlayerItemHoldingsTableName}"" (
+    ""Id"" INTEGER NOT NULL CONSTRAINT ""PK_{PlayerItemHoldingsTableName}"" PRIMARY KEY AUTOINCREMENT,
+    ""PlayerId"" INTEGER NOT NULL,
+    ""ItemKey"" TEXT NOT NULL,
+    ""Quantity"" INTEGER NOT NULL
+);");
+    }
+
+    dbContext.Database.ExecuteSqlRaw($@"
+CREATE UNIQUE INDEX IF NOT EXISTS ""IX_{PlayerItemHoldingsTableName}_PlayerId_ItemKey""
+ON ""{PlayerItemHoldingsTableName}"" (""PlayerId"", ""ItemKey"");");
+}
+
+static HashSet<string> GetSqliteTableNames(GameDbContext dbContext)
+{
+    var connection = dbContext.Database.GetDbConnection();
+    var shouldClose = connection.State != ConnectionState.Open;
+    if (shouldClose)
+    {
+        connection.Open();
+    }
+
+    try
+    {
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT name FROM sqlite_master WHERE type = 'table'";
+        using var reader = command.ExecuteReader();
+        var tableNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        while (reader.Read())
+        {
+            tableNames.Add(reader.GetString(0));
+        }
+
+        return tableNames;
+    }
+    finally
+    {
+        if (shouldClose)
+        {
+            connection.Close();
+        }
+    }
 }
 
 static HashSet<string> GetPlayerColumnNames(GameDbContext dbContext)
@@ -523,6 +838,12 @@ static void AddPlayerColumnIfMissing(GameDbContext dbContext, HashSet<string> ex
             "CurrentEnemyAttack" => @"ALTER TABLE ""Players"" ADD COLUMN ""CurrentEnemyAttack"" INTEGER NULL",
             "CurrentEnemyGoldReward" => @"ALTER TABLE ""Players"" ADD COLUMN ""CurrentEnemyGoldReward"" INTEGER NULL",
             "CurrentEnemyExperienceReward" => @"ALTER TABLE ""Players"" ADD COLUMN ""CurrentEnemyExperienceReward"" INTEGER NULL",
+            "CurrentAreaKey" => @"ALTER TABLE ""Players"" ADD COLUMN ""CurrentAreaKey"" TEXT NOT NULL DEFAULT 'elwynn-forest'",
+            "CurrentEncounterType" => @"ALTER TABLE ""Players"" ADD COLUMN ""CurrentEncounterType"" TEXT NULL",
+            "CurrentEncounterKey" => @"ALTER TABLE ""Players"" ADD COLUMN ""CurrentEncounterKey"" TEXT NULL",
+            "CurrentEncounterName" => @"ALTER TABLE ""Players"" ADD COLUMN ""CurrentEncounterName"" TEXT NULL",
+            "CurrentEncounterWaveIndex" => @"ALTER TABLE ""Players"" ADD COLUMN ""CurrentEncounterWaveIndex"" INTEGER NULL",
+            "CurrentEncounterTotalWaves" => @"ALTER TABLE ""Players"" ADD COLUMN ""CurrentEncounterTotalWaves"" INTEGER NULL",
             "PreferredEnemyKey" => @"ALTER TABLE ""Players"" ADD COLUMN ""PreferredEnemyKey"" TEXT NOT NULL DEFAULT 'random'",
             "PowerStrikeEnabled" => @"ALTER TABLE ""Players"" ADD COLUMN ""PowerStrikeEnabled"" INTEGER NOT NULL DEFAULT 1",
             "PowerStrikeCooldownRemaining" => @"ALTER TABLE ""Players"" ADD COLUMN ""PowerStrikeCooldownRemaining"" INTEGER NOT NULL DEFAULT 0",
@@ -545,6 +866,281 @@ static string NormalizePreferredEnemyKey(string? preferredEnemyKey)
     return TryGetPreferredEnemyKey(preferredEnemyKey, out var normalizedKey)
         ? normalizedKey
         : PreferredEnemyRandomKey;
+}
+
+static bool TryGetAreaDefinition(
+    IReadOnlyDictionary<string, AreaDefinitionDto> areaByKey,
+    string? areaKey,
+    out AreaDefinitionDto area)
+{
+    if (string.IsNullOrWhiteSpace(areaKey))
+    {
+        area = default!;
+        return false;
+    }
+
+    return areaByKey.TryGetValue(areaKey.Trim(), out area!);
+}
+
+static void EnsurePlayerCurrentArea(
+    Player player,
+    IReadOnlyDictionary<string, AreaDefinitionDto> areaByKey,
+    AreaDefinitionDto startingArea)
+{
+    if (TryGetAreaDefinition(areaByKey, player.CurrentAreaKey, out _))
+    {
+        player.CurrentAreaKey = ResolveCurrentAreaKey(player);
+        return;
+    }
+
+    player.CurrentAreaKey = startingArea.AreaKey;
+}
+
+static bool TryGetDungeonDefinition(
+    IReadOnlyDictionary<string, DungeonDefinitionDto> dungeonByKey,
+    string? dungeonKey,
+    out DungeonDefinitionDto dungeon)
+{
+    if (string.IsNullOrWhiteSpace(dungeonKey))
+    {
+        dungeon = default!;
+        return false;
+    }
+
+    return dungeonByKey.TryGetValue(dungeonKey.Trim(), out dungeon!);
+}
+
+static bool TryGetDungeonWave(DungeonDefinitionDto dungeon, int waveIndex, out DungeonWaveDefinitionDto wave)
+{
+    wave = dungeon.Waves
+        .FirstOrDefault(candidateWave => candidateWave.WaveIndex == waveIndex)!;
+
+    if (wave is null)
+    {
+        return false;
+    }
+
+    return wave.EnemyKeys.Count > 0;
+}
+
+static string BuildDungeonEncounterKey(string dungeonKey) => $"dungeon:{dungeonKey}";
+
+static bool TryParseDungeonKeyFromEncounterKey(string? encounterKey, out string dungeonKey)
+{
+    const string dungeonPrefix = "dungeon:";
+    if (!string.IsNullOrWhiteSpace(encounterKey) && encounterKey.StartsWith(dungeonPrefix, StringComparison.OrdinalIgnoreCase))
+    {
+        dungeonKey = encounterKey[dungeonPrefix.Length..].Trim();
+        return !string.IsNullOrWhiteSpace(dungeonKey);
+    }
+
+    dungeonKey = string.Empty;
+    return false;
+}
+
+static bool TryGetCurrentDungeonEncounterDefinition(
+    Player player,
+    IReadOnlyDictionary<string, DungeonDefinitionDto> dungeonByKey,
+    out DungeonDefinitionDto dungeon)
+{
+    dungeon = default!;
+    if (!HasCurrentEncounter(player)
+        || !EncounterTypeDungeon.Equals(player.CurrentEncounterType, StringComparison.OrdinalIgnoreCase)
+        || !TryParseDungeonKeyFromEncounterKey(player.CurrentEncounterKey, out var dungeonKey))
+    {
+        return false;
+    }
+
+    return TryGetDungeonDefinition(dungeonByKey, dungeonKey, out dungeon);
+}
+
+static bool TryAssignDungeonWaveEnemy(
+    Player player,
+    DungeonDefinitionDto dungeon,
+    int waveIndex,
+    IReadOnlyDictionary<string, EnemyTemplate> enemyTemplateByKey)
+{
+    if (!TryGetDungeonWave(dungeon, waveIndex, out var wave))
+    {
+        return false;
+    }
+
+    var enemyKey = wave.EnemyKeys
+        .Select(NormalizePreferredEnemyKey)
+        .FirstOrDefault(key => enemyTemplateByKey.ContainsKey(key));
+    if (string.IsNullOrWhiteSpace(enemyKey))
+    {
+        return false;
+    }
+
+    var enemyTemplate = enemyTemplateByKey[enemyKey];
+    AssignCurrentEnemy(player, enemyTemplate);
+    return true;
+}
+
+static bool TryStartDungeonEncounterRun(
+    Player player,
+    DungeonDefinitionDto dungeon,
+    IReadOnlyDictionary<string, EnemyTemplate> enemyTemplateByKey,
+    out string errorMessage)
+{
+    errorMessage = string.Empty;
+    EndCurrentEncounterRun(player);
+
+    if (dungeon.Waves.Count <= 0)
+    {
+        errorMessage = $"Dungeon '{dungeon.DisplayName}' has no configured waves.";
+        return false;
+    }
+
+    if (!TryAssignDungeonWaveEnemy(player, dungeon, waveIndex: 1, enemyTemplateByKey))
+    {
+        errorMessage = $"Dungeon '{dungeon.DisplayName}' wave 1 has no supported enemy.";
+        return false;
+    }
+
+    AssignCurrentEncounter(
+        player,
+        EncounterTypeDungeon,
+        BuildDungeonEncounterKey(dungeon.DungeonKey),
+        dungeon.DisplayName,
+        waveIndex: 1,
+        totalWaves: dungeon.Waves.Count);
+    return true;
+}
+
+static bool TryAdvanceDungeonEncounterWaveIfNeeded(
+    Player player,
+    IReadOnlyDictionary<string, DungeonDefinitionDto> dungeonByKey,
+    IReadOnlyDictionary<string, EnemyTemplate> enemyTemplateByKey)
+{
+    if (!TryGetCurrentDungeonEncounterDefinition(player, dungeonByKey, out var dungeon))
+    {
+        return false;
+    }
+
+    var currentWaveIndex = Math.Max(1, player.CurrentEncounterWaveIndex ?? 1);
+    var nextWaveIndex = currentWaveIndex + 1;
+    if (nextWaveIndex > dungeon.Waves.Count)
+    {
+        return false;
+    }
+
+    if (!TryAssignDungeonWaveEnemy(player, dungeon, nextWaveIndex, enemyTemplateByKey))
+    {
+        return false;
+    }
+
+    player.CurrentEncounterWaveIndex = nextWaveIndex;
+    player.CurrentEncounterTotalWaves = dungeon.Waves.Count;
+    return true;
+}
+
+static void EnsureActiveEncounterRunForFight(
+    Player player,
+    IReadOnlyDictionary<string, AreaDefinitionDto> areaByKey,
+    IReadOnlyDictionary<string, DungeonDefinitionDto> dungeonByKey,
+    IReadOnlyDictionary<string, EnemyTemplate> enemyTemplateByKey,
+    EnemyTemplate[] enemyTemplates,
+    AreaDefinitionDto startingArea)
+{
+    if (HasCurrentEncounter(player))
+    {
+        if (EncounterTypeDungeon.Equals(player.CurrentEncounterType, StringComparison.OrdinalIgnoreCase))
+        {
+            EnsureActiveDungeonEncounterRunForFight(player, dungeonByKey, enemyTemplateByKey);
+            if (HasCurrentEncounter(player) && HasCurrentEnemy(player))
+            {
+                return;
+            }
+        }
+        else
+        {
+            EnsureActiveNormalEncounterRunForFight(player, areaByKey, enemyTemplateByKey, enemyTemplates, startingArea);
+            return;
+        }
+    }
+
+    EnsureActiveNormalEncounterRunForFight(player, areaByKey, enemyTemplateByKey, enemyTemplates, startingArea);
+}
+
+static void EnsureActiveDungeonEncounterRunForFight(
+    Player player,
+    IReadOnlyDictionary<string, DungeonDefinitionDto> dungeonByKey,
+    IReadOnlyDictionary<string, EnemyTemplate> enemyTemplateByKey)
+{
+    if (!TryGetCurrentDungeonEncounterDefinition(player, dungeonByKey, out var dungeon))
+    {
+        EndCurrentEncounterRun(player);
+        return;
+    }
+
+    var currentWaveIndex = Math.Max(1, player.CurrentEncounterWaveIndex ?? 1);
+    if (!TryGetDungeonWave(dungeon, currentWaveIndex, out _))
+    {
+        EndCurrentEncounterRun(player);
+        return;
+    }
+
+    if (HasCurrentEnemy(player))
+    {
+        return;
+    }
+
+    if (!TryAssignDungeonWaveEnemy(player, dungeon, currentWaveIndex, enemyTemplateByKey))
+    {
+        EndCurrentEncounterRun(player);
+    }
+}
+
+static void EnsureActiveNormalEncounterRunForFight(
+    Player player,
+    IReadOnlyDictionary<string, AreaDefinitionDto> areaByKey,
+    IReadOnlyDictionary<string, EnemyTemplate> enemyTemplateByKey,
+    EnemyTemplate[] enemyTemplates,
+    AreaDefinitionDto startingArea)
+{
+    EnsurePlayerCurrentArea(player, areaByKey, startingArea);
+
+    if (!TryGetAreaDefinition(areaByKey, player.CurrentAreaKey, out var currentArea))
+    {
+        currentArea = startingArea;
+        player.CurrentAreaKey = startingArea.AreaKey;
+    }
+
+    if (HasCurrentEncounter(player) && HasCurrentEnemy(player))
+    {
+        return;
+    }
+
+    if (HasCurrentEncounter(player) && !HasCurrentEnemy(player))
+    {
+        EndCurrentEncounterRun(player);
+    }
+
+    if (!HasCurrentEncounter(player))
+    {
+        StartNormalEncounterRun(player, currentArea, enemyTemplateByKey, enemyTemplates);
+    }
+}
+
+static void StartNormalEncounterRun(
+    Player player,
+    AreaDefinitionDto area,
+    IReadOnlyDictionary<string, EnemyTemplate> enemyTemplateByKey,
+    EnemyTemplate[] enemyTemplates)
+{
+    var preferredEnemyKey = NormalizePreferredEnemyKey(player.PreferredEnemyKey);
+    var enemyTemplate = GetEnemyTemplateForNewFightInArea(preferredEnemyKey, area, enemyTemplateByKey, enemyTemplates);
+    var encounterKey = $"normal:{area.AreaKey}:{enemyTemplate.Name.ToLowerInvariant().Replace(" ", "-")}";
+    AssignCurrentEncounter(
+        player,
+        EncounterTypeNormal,
+        encounterKey,
+        $"{area.DisplayName} - Normal Encounter",
+        NormalEncounterSingleWaveIndex,
+        NormalEncounterSingleWaveTotal);
+    AssignCurrentEnemy(player, enemyTemplate);
 }
 
 static async Task<IResult> BuyShopItemAsync(
@@ -570,14 +1166,18 @@ static async Task<IResult> BuyShopItemAsync(
     }
 
     ApplyShopPurchase(player, item);
+    await ApplyShopItemHoldingEffectAsync(dbContext, player, item);
 
     await dbContext.SaveChangesAsync();
+    var playerDto = await BuildPlayerDtoWithFoodProjectionAsync(dbContext, player);
     return Results.Ok(new ShopPurchaseResultDto(
         item.ItemKey,
         item.DisplayName,
         item.GoldPrice,
+        BuildShopPurchaseResourcesDelta(item),
+        BuildShopPurchaseHoldingDelta(item),
         item.Effect,
-        ToPlayerDto(player)));
+        playerDto));
 }
 
 static bool TryGetShopItemDefinition(
@@ -594,6 +1194,100 @@ static bool TryGetShopItemDefinition(
     return shopItemByKey.TryGetValue(itemKey, out item!);
 }
 
+static bool TryGetConsumableUseMetadata(
+    ShopItemDefinitionDto item,
+    out ConsumableUseMetadataDto consumableUse)
+{
+    if (item.ConsumableUse is null)
+    {
+        consumableUse = default!;
+        return false;
+    }
+
+    consumableUse = item.ConsumableUse;
+
+    if (consumableUse.ConsumedAmount <= 0)
+    {
+        return false;
+    }
+
+    if (consumableUse.HpRecover < 0)
+    {
+        return false;
+    }
+
+    return true;
+}
+
+static async Task<ConsumableUseExecutionResult> TryUseConsumableItemAsync(
+    GameDbContext dbContext,
+    Player player,
+    string itemKey,
+    IReadOnlyDictionary<string, ShopItemDefinitionDto> shopItemByKey)
+{
+    if (!TryGetShopItemDefinition(shopItemByKey, itemKey, out var item))
+    {
+        return ConsumableUseExecutionResult.NotFound("Consumable item not found.");
+    }
+
+    if (!TryGetConsumableUseMetadata(item, out var consumableUse))
+    {
+        return ConsumableUseExecutionResult.BadRequest("Item is not a supported consumable action.");
+    }
+
+    var holding = await GetOrCreateAndPersistHoldingAsync(dbContext, player, item.ItemKey);
+    if (holding.Quantity <= 0)
+    {
+        return ConsumableUseExecutionResult.BadRequest($"Not enough {item.ItemKey}.");
+    }
+
+    var consumedAmount = consumableUse.ConsumedAmount;
+    var hpBeforeUseItem = player.CurrentHp;
+    UpdateItemHoldingQuantityInMemory(holding, -consumedAmount);
+    await SyncFoodProjectionFromHoldingAsync(dbContext, player);
+    player.CurrentHp = Math.Min(player.MaxHp, player.CurrentHp + consumableUse.HpRecover);
+    var recoveredHp = Math.Max(0, player.CurrentHp - hpBeforeUseItem);
+    player.UpdatedAt = DateTime.UtcNow;
+
+    await dbContext.SaveChangesAsync();
+    var playerDto = await BuildPlayerDtoWithFoodProjectionAsync(dbContext, player);
+    var result = new UseItemResultDto(
+        ActionName: $"Use {item.DisplayName}",
+        ItemKey: item.ItemKey,
+        ConsumedAmount: consumedAmount,
+        ResourcesDelta: BuildConsumableUseResourcesDelta(item.ItemKey, consumedAmount),
+        HoldingDelta: BuildConsumableUseHoldingDelta(item.ItemKey, consumedAmount),
+        RecoveredHp: recoveredHp,
+        Player: playerDto);
+    return ConsumableUseExecutionResult.Succeed(result);
+}
+
+static IResult BuildConsumableUseErrorResult(int statusCode, string message)
+{
+    if (statusCode == StatusCodes.Status404NotFound)
+    {
+        return Results.NotFound(new { message });
+    }
+
+    if (statusCode == StatusCodes.Status400BadRequest)
+    {
+        return Results.BadRequest(new { message });
+    }
+
+    return Results.Json(new { message }, statusCode: statusCode);
+}
+
+static UseFoodResultDto BuildUseFoodResultFromUseItemResult(UseItemResultDto useItemResult) =>
+    new(
+        ActionName: useItemResult.ActionName,
+        ItemKey: useItemResult.ItemKey,
+        ConsumedAmount: useItemResult.ConsumedAmount,
+        ResourcesDelta: useItemResult.ResourcesDelta,
+        HoldingDelta: useItemResult.HoldingDelta,
+        RecoveredHp: useItemResult.RecoveredHp,
+        Player: useItemResult.Player,
+        ResourceKey: useItemResult.ItemKey);
+
 static bool CanAffordShopItem(Player player, ShopItemDefinitionDto item, out string message)
 {
     if (player.Gold >= item.GoldPrice)
@@ -609,13 +1303,23 @@ static bool CanAffordShopItem(Player player, ShopItemDefinitionDto item, out str
 static void ApplyShopPurchase(Player player, ShopItemDefinitionDto item)
 {
     player.Gold -= item.GoldPrice;
-    ApplyShopItemEffect(player, item.Effect);
     player.UpdatedAt = DateTime.UtcNow;
 }
 
-static void ApplyShopItemEffect(Player player, ShopItemEffectDto effect)
+static async Task ApplyShopItemHoldingEffectAsync(
+    GameDbContext dbContext,
+    Player player,
+    ShopItemDefinitionDto item)
 {
-    player.Food += effect.FoodDelta;
+    var holding = await GetOrCreateAndPersistHoldingAsync(dbContext, player, item.ItemKey);
+    if (item.ItemKey.Equals(FoodItemKey, StringComparison.OrdinalIgnoreCase))
+    {
+        UpdateItemHoldingQuantityInMemory(holding, item.Effect.FoodDelta);
+        await SyncFoodProjectionFromHoldingAsync(dbContext, player);
+        return;
+    }
+
+    UpdateItemHoldingQuantityInMemory(holding, 1);
 }
 
 static bool TryGetPreferredEnemyKey(string? preferredEnemyKey, out string normalizedKey)
@@ -625,8 +1329,11 @@ static bool TryGetPreferredEnemyKey(string? preferredEnemyKey, out string normal
     {
         case PreferredEnemyRandomKey:
         case PreferredEnemyTrainingSlimeKey:
+        case PreferredEnemyForestSpiderKey:
         case PreferredEnemyWolfKey:
         case PreferredEnemyGoblinKey:
+        case PreferredEnemyDefiasBanditKey:
+        case PreferredEnemyHarvestGolemKey:
             return true;
         default:
             normalizedKey = PreferredEnemyRandomKey;
@@ -636,7 +1343,7 @@ static bool TryGetPreferredEnemyKey(string? preferredEnemyKey, out string normal
 
 static EnemyTemplate GetEnemyTemplateForNewFight(
     string preferredEnemyKey,
-    Dictionary<string, EnemyTemplate> enemyTemplateByKey,
+    IReadOnlyDictionary<string, EnemyTemplate> enemyTemplateByKey,
     EnemyTemplate[] enemyTemplates)
 {
     if (preferredEnemyKey == PreferredEnemyRandomKey)
@@ -647,6 +1354,39 @@ static EnemyTemplate GetEnemyTemplateForNewFight(
     return enemyTemplateByKey.TryGetValue(preferredEnemyKey, out var enemyTemplate)
         ? enemyTemplate
         : enemyTemplates[Random.Shared.Next(enemyTemplates.Length)];
+}
+
+static EnemyTemplate GetEnemyTemplateForNewFightInArea(
+    string preferredEnemyKey,
+    AreaDefinitionDto area,
+    IReadOnlyDictionary<string, EnemyTemplate> enemyTemplateByKey,
+    EnemyTemplate[] fallbackEnemyTemplates)
+{
+    var areaEnemyTemplates = area.NormalEnemyKeys
+        .Select(enemyKey =>
+        {
+            var normalizedEnemyKey = NormalizePreferredEnemyKey(enemyKey);
+            return enemyTemplateByKey.TryGetValue(normalizedEnemyKey, out var enemyTemplate)
+                ? enemyTemplate
+                : null;
+        })
+        .Where(template => template is not null)
+        .Cast<EnemyTemplate>()
+        .ToArray();
+
+    if (areaEnemyTemplates.Length <= 0)
+    {
+        return GetEnemyTemplateForNewFight(preferredEnemyKey, enemyTemplateByKey, fallbackEnemyTemplates);
+    }
+
+    if (preferredEnemyKey != PreferredEnemyRandomKey
+        && area.NormalEnemyKeys.Any(enemyKey => NormalizePreferredEnemyKey(enemyKey) == preferredEnemyKey)
+        && enemyTemplateByKey.TryGetValue(preferredEnemyKey, out var preferredEnemyTemplate))
+    {
+        return preferredEnemyTemplate;
+    }
+
+    return areaEnemyTemplates[Random.Shared.Next(areaEnemyTemplates.Length)];
 }
 
 static List<PlayerTurnActionType> BuildPlayerTurnActionSequence(Player player, int powerStrikeCooldownAtTurnStart)
@@ -830,6 +1570,147 @@ static EnemyActionResultDto ToEnemyActionResultDto(EnemyActionExecutionResult ac
         actionResult.DamageDealt,
         actionResult.PlayerHpAfterAction);
 
+static ResourceDeltaDto CreateResourceDelta(
+    int goldDelta,
+    int experienceDelta,
+    int foodDelta) =>
+    new(
+        GoldDelta: goldDelta,
+        ExperienceDelta: experienceDelta,
+        FoodDelta: foodDelta);
+
+static ResourceDeltaDto BuildShopPurchaseResourcesDelta(ShopItemDefinitionDto item) =>
+    CreateResourceDelta(
+        goldDelta: -item.GoldPrice,
+        experienceDelta: 0,
+        foodDelta: item.Effect.FoodDelta);
+
+static ResourceDeltaDto BuildUseFoodResourcesDelta(int consumedAmount) =>
+    CreateResourceDelta(
+        goldDelta: 0,
+        experienceDelta: 0,
+        foodDelta: -consumedAmount);
+
+static ResourceDeltaDto BuildConsumableUseResourcesDelta(string itemKey, int consumedAmount) =>
+    itemKey.Equals(FoodItemKey, StringComparison.OrdinalIgnoreCase)
+        ? BuildUseFoodResourcesDelta(consumedAmount)
+        : CreateResourceDelta(
+            goldDelta: 0,
+            experienceDelta: 0,
+            foodDelta: 0);
+
+static HoldingDeltaDto BuildConsumableUseHoldingDelta(string itemKey, int consumedAmount) =>
+    BuildHoldingDelta(itemKey, -consumedAmount);
+
+static HoldingDeltaDto BuildHoldingDelta(string itemKey, int quantityDelta) =>
+    new(
+        ItemKey: itemKey,
+        QuantityDelta: quantityDelta,
+        DisplayName: ResolveHoldingDisplayName(itemKey));
+
+static HoldingDeltaDto BuildShopPurchaseHoldingDelta(ShopItemDefinitionDto item) =>
+    item.ItemKey.Equals(FoodItemKey, StringComparison.OrdinalIgnoreCase)
+        ? BuildHoldingDelta(item.ItemKey, item.Effect.FoodDelta)
+        : BuildHoldingDelta(item.ItemKey, 1);
+
+static FightRewardResultDto BuildFightRewardResultDto(FightSettlementResult settlementResult) =>
+    new(
+        settlementResult.GoldReward,
+        settlementResult.ExpReward,
+        settlementResult.FoodReward,
+        CreateResourceDelta(
+            goldDelta: settlementResult.GoldReward,
+            experienceDelta: settlementResult.ExpReward,
+            foodDelta: settlementResult.FoodReward));
+
+static async Task<PlayerItemHolding> GetOrCreateAndPersistHoldingAsync(
+    GameDbContext dbContext,
+    Player player,
+    string itemKey)
+{
+    var existingHolding = await dbContext.PlayerItemHoldings
+        .FirstOrDefaultAsync(holding =>
+            holding.PlayerId == player.Id
+            && holding.ItemKey == itemKey);
+    if (existingHolding is not null)
+    {
+        return existingHolding;
+    }
+
+    var newHolding = new PlayerItemHolding
+    {
+        PlayerId = player.Id,
+        ItemKey = itemKey,
+        // Transitional bridge: only food can be seeded from legacy Player.Food during migration to holdings.
+        Quantity = itemKey.Equals(FoodItemKey, StringComparison.OrdinalIgnoreCase)
+            ? Math.Max(0, player.Food)
+            : 0
+    };
+    dbContext.PlayerItemHoldings.Add(newHolding);
+    await dbContext.SaveChangesAsync();
+    return newHolding;
+}
+
+static async Task<PlayerItemHolding> GetOrCreateAndPersistFoodHoldingAsync(
+    GameDbContext dbContext,
+    Player player) =>
+    await GetOrCreateAndPersistHoldingAsync(dbContext, player, FoodItemKey);
+
+static void UpdateItemHoldingQuantityInMemory(PlayerItemHolding holding, int quantityDelta)
+{
+    var nextQuantity = holding.Quantity + quantityDelta;
+    if (nextQuantity < 0)
+    {
+        throw new InvalidOperationException($"Item holding quantity cannot be negative. ResultingQuantity={nextQuantity}, Delta={quantityDelta}, PlayerId={holding.PlayerId}, ItemKey={holding.ItemKey}");
+    }
+
+    holding.Quantity = nextQuantity;
+}
+
+static void SyncFoodProjection(Player player, PlayerItemHolding foodHolding)
+{
+    player.Food = foodHolding.Quantity;
+}
+
+static async Task SyncFoodProjectionFromHoldingAsync(GameDbContext dbContext, Player player)
+{
+    var foodHolding = await GetOrCreateAndPersistFoodHoldingAsync(dbContext, player);
+    SyncFoodProjection(player, foodHolding);
+}
+
+static async Task<PlayerDto> BuildPlayerDtoWithFoodProjectionAsync(GameDbContext dbContext, Player player)
+{
+    await SyncFoodProjectionFromHoldingAsync(dbContext, player);
+    return ToPlayerDto(player);
+}
+
+static async Task<IReadOnlyList<PlayerItemHoldingDto>> BuildPlayerItemHoldingDtosAsync(GameDbContext dbContext, Player player)
+{
+    await SyncFoodProjectionFromHoldingAsync(dbContext, player);
+
+    var holdings = await dbContext.PlayerItemHoldings
+        .Where(holding => holding.PlayerId == player.Id && holding.Quantity > 0)
+        .OrderBy(holding => holding.ItemKey)
+        .ToListAsync();
+
+    return holdings
+        .Select(holding => ToPlayerItemHoldingDto(holding))
+        .ToArray();
+}
+
+static PlayerItemHoldingDto ToPlayerItemHoldingDto(PlayerItemHolding holding) =>
+    new(
+        holding.ItemKey,
+        holding.Quantity,
+        ResolveHoldingDisplayName(holding.ItemKey));
+
+static string ResolveHoldingDisplayName(string itemKey) =>
+    itemKey.Equals(FoodItemKey, StringComparison.OrdinalIgnoreCase)
+        ? "Food"
+        : (itemKey.Equals(PotionItemKey, StringComparison.OrdinalIgnoreCase)
+            ? "Potion"
+            : itemKey);
+
 file sealed record EnemyTemplate(
     string Name,
     int MaxHp,
@@ -862,12 +1743,14 @@ file sealed record DamageSettlementResult(
 file sealed record EnemyDefeatSettlementResult(
     int GoldReward,
     int ExpReward,
+    int FoodReward,
     bool LeveledUp);
 
 file sealed record FightSettlementResult(
     FightSettlementBranch Branch,
     int GoldReward,
     int ExpReward,
+    int FoodReward,
     bool LeveledUp);
 
 file enum FightSettlementBranch
@@ -876,6 +1759,7 @@ file enum FightSettlementBranch
     PlayerDefeated,
     Ongoing
 }
+
 
 file enum PlayerTurnActionType
 {
@@ -887,6 +1771,34 @@ file enum EnemyTurnActionType
 {
     EnemyJab,
     EnemyAttack
+}
+
+file sealed record ConsumableUseExecutionResult(
+    bool Success,
+    int StatusCode,
+    string Message,
+    UseItemResultDto? UseItemResult)
+{
+    public static ConsumableUseExecutionResult Succeed(UseItemResultDto result) =>
+        new(
+            Success: true,
+            StatusCode: StatusCodes.Status200OK,
+            Message: string.Empty,
+            UseItemResult: result);
+
+    public static ConsumableUseExecutionResult NotFound(string message) =>
+        new(
+            Success: false,
+            StatusCode: StatusCodes.Status404NotFound,
+            Message: message,
+            UseItemResult: null);
+
+    public static ConsumableUseExecutionResult BadRequest(string message) =>
+        new(
+            Success: false,
+            StatusCode: StatusCodes.Status400BadRequest,
+            Message: message,
+            UseItemResult: null);
 }
 
 file sealed record PlayerTurnExecutionResult(

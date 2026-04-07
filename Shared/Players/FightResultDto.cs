@@ -4,6 +4,7 @@ public sealed record FightResultDto(
     bool IsVictory,
     int GoldReward,
     int ExperienceReward,
+    FightRewardResultDto Rewards,
     bool LeveledUp,
     string EnemyName,
     int EnemyMaxHp,
@@ -27,3 +28,9 @@ public sealed record EnemyActionResultDto(
     string ActionName,
     int DamageDealt,
     int PlayerHpAfterAction);
+
+public sealed record FightRewardResultDto(
+    int Gold,
+    int Experience,
+    int Food,
+    ResourceDeltaDto ResourcesDelta);
