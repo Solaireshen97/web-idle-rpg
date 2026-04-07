@@ -34,6 +34,7 @@ const string PreferredEnemyHarvestGolemKey = "harvest-golem";
 const string AreaElwynnForestKey = "elwynn-forest";
 const string AreaWestfallKey = "westfall";
 const string EncounterTypeNormal = "normal";
+const string EncounterTypeDungeon = "dungeon";
 const int NormalEncounterSingleWaveIndex = 1;
 const int NormalEncounterSingleWaveTotal = 1;
 
@@ -67,6 +68,38 @@ var areaDefinitions = new[]
 };
 var areaByKey = areaDefinitions.ToDictionary(area => area.AreaKey, StringComparer.OrdinalIgnoreCase);
 var startingArea = areaDefinitions.First(area => area.IsStartingArea);
+var dungeonDefinitions = new[]
+{
+    new DungeonDefinitionDto(
+        DungeonKey: "elwynn-forest-training-grounds",
+        DisplayName: "Elwynn Forest Training Grounds",
+        AreaKey: AreaElwynnForestKey,
+        UnlockLevel: 1,
+        Waves: new[]
+        {
+            new DungeonWaveDefinitionDto(
+                WaveIndex: 1,
+                EnemyKeys: new[] { PreferredEnemyTrainingSlimeKey }),
+            new DungeonWaveDefinitionDto(
+                WaveIndex: 2,
+                EnemyKeys: new[] { PreferredEnemyForestSpiderKey })
+        }),
+    new DungeonDefinitionDto(
+        DungeonKey: "westfall-abandoned-mine",
+        DisplayName: "Westfall Abandoned Mine",
+        AreaKey: AreaWestfallKey,
+        UnlockLevel: 10,
+        Waves: new[]
+        {
+            new DungeonWaveDefinitionDto(
+                WaveIndex: 1,
+                EnemyKeys: new[] { PreferredEnemyGoblinKey }),
+            new DungeonWaveDefinitionDto(
+                WaveIndex: 2,
+                EnemyKeys: new[] { PreferredEnemyDefiasBanditKey })
+        })
+};
+var dungeonByKey = dungeonDefinitions.ToDictionary(dungeon => dungeon.DungeonKey, StringComparer.OrdinalIgnoreCase);
 var shopItems = new[]
 {
     new ShopItemDefinitionDto(
@@ -124,6 +157,7 @@ app.MapGet("/api/ping", () => Results.Ok(new { message = "pong" }));
 app.MapGet("/api/shop/items", () => Results.Ok(shopItems));
 app.MapGet("/api/shop/items/food", () => Results.Ok(shopItemByKey["food"]));
 app.MapGet("/api/areas", () => Results.Ok(areaDefinitions));
+app.MapGet("/api/dungeons", () => Results.Ok(dungeonDefinitions));
 
 app.MapPost("/api/players", async (GameDbContext dbContext, CreatePlayerRequest request) =>
 {
@@ -276,6 +310,41 @@ app.MapPost("/api/players/{id:int}/current-area", async (GameDbContext dbContext
     return Results.Ok(playerDto);
 });
 
+app.MapPost("/api/players/{id:int}/enter-dungeon/{dungeonKey}", async (GameDbContext dbContext, int id, string dungeonKey) =>
+{
+    var player = await dbContext.Players.FindAsync(id);
+    if (player is null)
+    {
+        return Results.NotFound();
+    }
+
+    EnsurePlayerCurrentArea(player, areaByKey, startingArea);
+    if (!TryGetDungeonDefinition(dungeonByKey, dungeonKey, out var dungeon))
+    {
+        return Results.BadRequest(new { message = "Invalid dungeonKey." });
+    }
+
+    if (!dungeon.AreaKey.Equals(ResolveCurrentAreaKey(player), StringComparison.OrdinalIgnoreCase))
+    {
+        return Results.BadRequest(new { message = $"Dungeon '{dungeon.DisplayName}' is not in current area '{ResolveAreaDisplayNameByKey(ResolveCurrentAreaKey(player))}'." });
+    }
+
+    if (player.Level < dungeon.UnlockLevel)
+    {
+        return Results.BadRequest(new { message = $"Dungeon '{dungeon.DisplayName}' unlocks at level {dungeon.UnlockLevel}." });
+    }
+
+    if (!TryStartDungeonEncounterRun(player, dungeon, enemyTemplateByKey, out var startErrorMessage))
+    {
+        return Results.BadRequest(new { message = startErrorMessage });
+    }
+
+    player.UpdatedAt = DateTime.UtcNow;
+    await dbContext.SaveChangesAsync();
+    var playerDto = await BuildPlayerDtoWithFoodProjectionAsync(dbContext, player);
+    return Results.Ok(playerDto);
+});
+
 app.MapPost("/api/players/{id:int}/power-strike", async (GameDbContext dbContext, int id, SetPowerStrikeRequest request) =>
 {
     var player = await dbContext.Players.FindAsync(id);
@@ -301,7 +370,7 @@ app.MapPost("/api/players/{id:int}/fight", async (GameDbContext dbContext, int i
     }
 
     EnsurePlayerCurrentArea(player, areaByKey, startingArea);
-    EnsureActiveNormalEncounterRunForFight(player, areaByKey, enemyTemplateByKey, enemyTemplates, startingArea);
+    EnsureActiveEncounterRunForFight(player, areaByKey, dungeonByKey, enemyTemplateByKey, enemyTemplates, startingArea);
 
     var enemy = GetCurrentEnemyState(player);
 
@@ -337,6 +406,8 @@ app.MapPost("/api/players/{id:int}/fight", async (GameDbContext dbContext, int i
     var settlementResult = await ApplyFightRoundSettlementAsync(
         dbContext,
         player,
+        dungeonByKey,
+        enemyTemplateByKey,
         enemy,
         enemyCurrentHp,
         playerCurrentHp,
@@ -525,6 +596,8 @@ static int GetRequiredExpForNextLevel(int currentLevel) =>
 static async Task<FightSettlementResult> ApplyFightRoundSettlementAsync(
     GameDbContext dbContext,
     Player player,
+    IReadOnlyDictionary<string, DungeonDefinitionDto> dungeonByKey,
+    IReadOnlyDictionary<string, EnemyTemplate> enemyTemplateByKey,
     CurrentEnemyState enemy,
     int enemyCurrentHp,
     int playerCurrentHp,
@@ -534,7 +607,10 @@ static async Task<FightSettlementResult> ApplyFightRoundSettlementAsync(
     if (enemyDefeated)
     {
         var enemyDefeatSettlementResult = await ApplyEnemyDefeatSettlementAsync(dbContext, player, enemy, playerCurrentHp);
-        EndCurrentEncounterRun(player);
+        if (!TryAdvanceDungeonEncounterWaveIfNeeded(player, dungeonByKey, enemyTemplateByKey))
+        {
+            EndCurrentEncounterRun(player);
+        }
         return new FightSettlementResult(
             FightSettlementBranch.EnemyDefeated,
             enemyDefeatSettlementResult.GoldReward,
@@ -818,6 +894,203 @@ static void EnsurePlayerCurrentArea(
     }
 
     player.CurrentAreaKey = startingArea.AreaKey;
+}
+
+static bool TryGetDungeonDefinition(
+    IReadOnlyDictionary<string, DungeonDefinitionDto> dungeonByKey,
+    string? dungeonKey,
+    out DungeonDefinitionDto dungeon)
+{
+    if (string.IsNullOrWhiteSpace(dungeonKey))
+    {
+        dungeon = default!;
+        return false;
+    }
+
+    return dungeonByKey.TryGetValue(dungeonKey.Trim(), out dungeon!);
+}
+
+static bool TryGetDungeonWave(DungeonDefinitionDto dungeon, int waveIndex, out DungeonWaveDefinitionDto wave)
+{
+    wave = dungeon.Waves
+        .FirstOrDefault(candidateWave => candidateWave.WaveIndex == waveIndex)!;
+
+    if (wave is null)
+    {
+        return false;
+    }
+
+    return wave.EnemyKeys.Count > 0;
+}
+
+static string BuildDungeonEncounterKey(string dungeonKey) => $"dungeon:{dungeonKey}";
+
+static bool TryParseDungeonKeyFromEncounterKey(string? encounterKey, out string dungeonKey)
+{
+    const string dungeonPrefix = "dungeon:";
+    if (!string.IsNullOrWhiteSpace(encounterKey) && encounterKey.StartsWith(dungeonPrefix, StringComparison.OrdinalIgnoreCase))
+    {
+        dungeonKey = encounterKey[dungeonPrefix.Length..].Trim();
+        return !string.IsNullOrWhiteSpace(dungeonKey);
+    }
+
+    dungeonKey = string.Empty;
+    return false;
+}
+
+static bool TryGetCurrentDungeonEncounterDefinition(
+    Player player,
+    IReadOnlyDictionary<string, DungeonDefinitionDto> dungeonByKey,
+    out DungeonDefinitionDto dungeon)
+{
+    dungeon = default!;
+    if (!HasCurrentEncounter(player)
+        || !EncounterTypeDungeon.Equals(player.CurrentEncounterType, StringComparison.OrdinalIgnoreCase)
+        || !TryParseDungeonKeyFromEncounterKey(player.CurrentEncounterKey, out var dungeonKey))
+    {
+        return false;
+    }
+
+    return TryGetDungeonDefinition(dungeonByKey, dungeonKey, out dungeon);
+}
+
+static bool TryAssignDungeonWaveEnemy(
+    Player player,
+    DungeonDefinitionDto dungeon,
+    int waveIndex,
+    IReadOnlyDictionary<string, EnemyTemplate> enemyTemplateByKey)
+{
+    if (!TryGetDungeonWave(dungeon, waveIndex, out var wave))
+    {
+        return false;
+    }
+
+    var enemyKey = wave.EnemyKeys
+        .Select(NormalizePreferredEnemyKey)
+        .FirstOrDefault(key => enemyTemplateByKey.ContainsKey(key));
+    if (string.IsNullOrWhiteSpace(enemyKey))
+    {
+        return false;
+    }
+
+    var enemyTemplate = enemyTemplateByKey[enemyKey];
+    AssignCurrentEnemy(player, enemyTemplate);
+    return true;
+}
+
+static bool TryStartDungeonEncounterRun(
+    Player player,
+    DungeonDefinitionDto dungeon,
+    IReadOnlyDictionary<string, EnemyTemplate> enemyTemplateByKey,
+    out string errorMessage)
+{
+    errorMessage = string.Empty;
+    EndCurrentEncounterRun(player);
+
+    if (dungeon.Waves.Count <= 0)
+    {
+        errorMessage = $"Dungeon '{dungeon.DisplayName}' has no configured waves.";
+        return false;
+    }
+
+    if (!TryAssignDungeonWaveEnemy(player, dungeon, waveIndex: 1, enemyTemplateByKey))
+    {
+        errorMessage = $"Dungeon '{dungeon.DisplayName}' wave 1 has no supported enemy.";
+        return false;
+    }
+
+    AssignCurrentEncounter(
+        player,
+        EncounterTypeDungeon,
+        BuildDungeonEncounterKey(dungeon.DungeonKey),
+        dungeon.DisplayName,
+        waveIndex: 1,
+        totalWaves: dungeon.Waves.Count);
+    return true;
+}
+
+static bool TryAdvanceDungeonEncounterWaveIfNeeded(
+    Player player,
+    IReadOnlyDictionary<string, DungeonDefinitionDto> dungeonByKey,
+    IReadOnlyDictionary<string, EnemyTemplate> enemyTemplateByKey)
+{
+    if (!TryGetCurrentDungeonEncounterDefinition(player, dungeonByKey, out var dungeon))
+    {
+        return false;
+    }
+
+    var currentWaveIndex = Math.Max(1, player.CurrentEncounterWaveIndex ?? 1);
+    var nextWaveIndex = currentWaveIndex + 1;
+    if (nextWaveIndex > dungeon.Waves.Count)
+    {
+        return false;
+    }
+
+    if (!TryAssignDungeonWaveEnemy(player, dungeon, nextWaveIndex, enemyTemplateByKey))
+    {
+        return false;
+    }
+
+    player.CurrentEncounterWaveIndex = nextWaveIndex;
+    player.CurrentEncounterTotalWaves = dungeon.Waves.Count;
+    return true;
+}
+
+static void EnsureActiveEncounterRunForFight(
+    Player player,
+    IReadOnlyDictionary<string, AreaDefinitionDto> areaByKey,
+    IReadOnlyDictionary<string, DungeonDefinitionDto> dungeonByKey,
+    IReadOnlyDictionary<string, EnemyTemplate> enemyTemplateByKey,
+    EnemyTemplate[] enemyTemplates,
+    AreaDefinitionDto startingArea)
+{
+    if (HasCurrentEncounter(player))
+    {
+        if (EncounterTypeDungeon.Equals(player.CurrentEncounterType, StringComparison.OrdinalIgnoreCase))
+        {
+            EnsureActiveDungeonEncounterRunForFight(player, dungeonByKey, enemyTemplateByKey);
+            if (HasCurrentEncounter(player) && HasCurrentEnemy(player))
+            {
+                return;
+            }
+        }
+        else
+        {
+            EnsureActiveNormalEncounterRunForFight(player, areaByKey, enemyTemplateByKey, enemyTemplates, startingArea);
+            return;
+        }
+    }
+
+    EnsureActiveNormalEncounterRunForFight(player, areaByKey, enemyTemplateByKey, enemyTemplates, startingArea);
+}
+
+static void EnsureActiveDungeonEncounterRunForFight(
+    Player player,
+    IReadOnlyDictionary<string, DungeonDefinitionDto> dungeonByKey,
+    IReadOnlyDictionary<string, EnemyTemplate> enemyTemplateByKey)
+{
+    if (!TryGetCurrentDungeonEncounterDefinition(player, dungeonByKey, out var dungeon))
+    {
+        EndCurrentEncounterRun(player);
+        return;
+    }
+
+    var currentWaveIndex = Math.Max(1, player.CurrentEncounterWaveIndex ?? 1);
+    if (!TryGetDungeonWave(dungeon, currentWaveIndex, out _))
+    {
+        EndCurrentEncounterRun(player);
+        return;
+    }
+
+    if (HasCurrentEnemy(player))
+    {
+        return;
+    }
+
+    if (!TryAssignDungeonWaveEnemy(player, dungeon, currentWaveIndex, enemyTemplateByKey))
+    {
+        EndCurrentEncounterRun(player);
+    }
 }
 
 static void EnsureActiveNormalEncounterRunForFight(

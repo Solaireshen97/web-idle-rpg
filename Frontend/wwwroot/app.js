@@ -33,6 +33,7 @@ const currentAreaProgressStatusElement = document.getElementById("currentAreaPro
 const currentEncounterNameElement = document.getElementById("currentEncounterName");
 const currentEncounterTypeElement = document.getElementById("currentEncounterType");
 const currentEncounterWaveElement = document.getElementById("currentEncounterWave");
+const dungeonListContainerElement = document.getElementById("dungeonListContainer");
 const shopItemsContainerElement = document.getElementById("shopItemsContainer");
 const playerHoldingsContainerElement = document.getElementById("playerHoldingsContainer");
 const defaultAutoUseFoodThresholdPercent = 50;
@@ -53,6 +54,7 @@ let currentPreferredEnemyKey = defaultPreferredEnemyKey;
 let currentPowerStrikeEnabled = defaultPowerStrikeEnabled;
 let currentShopItems = [...defaultShopItems];
 let currentAreas = [];
+let currentDungeons = [];
 
 const preferredEnemyDisplayNameByKey = {
   random: "Random",
@@ -171,6 +173,33 @@ function normalizeArea(rawArea) {
   return { areaKey, displayName, unlockLevel, isStartingArea, normalEnemyKeys, dungeonKeys };
 }
 
+function normalizeDungeonWave(rawWave) {
+  const waveIndex = Number.isFinite(rawWave?.waveIndex) ? rawWave.waveIndex : 1;
+  const enemyKeys = Array.isArray(rawWave?.enemyKeys)
+    ? rawWave.enemyKeys
+      .filter(enemyKey => typeof enemyKey === "string" && enemyKey.trim().length > 0)
+      .map(enemyKey => enemyKey.trim().toLowerCase())
+    : [];
+  return { waveIndex, enemyKeys };
+}
+
+function normalizeDungeon(rawDungeon) {
+  const dungeonKey = typeof rawDungeon?.dungeonKey === "string" && rawDungeon.dungeonKey.trim().length > 0
+    ? rawDungeon.dungeonKey.trim().toLowerCase()
+    : "";
+  const displayName = typeof rawDungeon?.displayName === "string" && rawDungeon.displayName.trim().length > 0
+    ? rawDungeon.displayName.trim()
+    : dungeonKey;
+  const areaKey = typeof rawDungeon?.areaKey === "string" && rawDungeon.areaKey.trim().length > 0
+    ? rawDungeon.areaKey.trim().toLowerCase()
+    : "";
+  const unlockLevel = Number.isFinite(rawDungeon?.unlockLevel) ? rawDungeon.unlockLevel : 1;
+  const waves = Array.isArray(rawDungeon?.waves)
+    ? rawDungeon.waves.map(normalizeDungeonWave).sort((a, b) => a.waveIndex - b.waveIndex)
+    : [];
+  return { dungeonKey, displayName, areaKey, unlockLevel, waves };
+}
+
 function syncAreaSelectUi(player) {
   if (currentAreas.length <= 0) {
     currentAreaSelect.innerHTML = "";
@@ -213,6 +242,41 @@ function syncAreaSelectUi(player) {
 
   currentAreaProgressStatusElement.textContent =
     `Area Progression: Unlocked [${unlockedAreaNames || "-"}] | Locked [${lockedAreaNames || "-"}] | Next Area Unlock: ${nextUnlockArea.displayName} at Lv${nextUnlockArea.unlockLevel}.`;
+}
+
+function syncDungeonListUi(player) {
+  if (!player) {
+    dungeonListContainerElement.textContent = "Load player to view dungeons.";
+    return;
+  }
+
+  const currentArea = getCurrentArea(player);
+  if (!currentArea) {
+    dungeonListContainerElement.textContent = "No area selected.";
+    return;
+  }
+
+  const playerLevel = Number.isFinite(player?.level) ? player.level : 0;
+  const areaDungeons = currentDungeons
+    .filter(dungeon => dungeon.areaKey === currentArea.areaKey)
+    .sort((a, b) => a.unlockLevel - b.unlockLevel);
+
+  if (areaDungeons.length <= 0) {
+    dungeonListContainerElement.textContent = "No dungeons in current area.";
+    return;
+  }
+
+  dungeonListContainerElement.innerHTML = areaDungeons.map(dungeon => {
+    const locked = playerLevel < dungeon.unlockLevel;
+    const waveCount = dungeon.waves.length;
+    const activeEncounterKey = typeof player?.currentEncounter?.encounterKey === "string"
+      ? player.currentEncounter.encounterKey.trim().toLowerCase()
+      : "";
+    const isCurrentDungeon = activeEncounterKey === `dungeon:${dungeon.dungeonKey}`;
+    const stateText = isCurrentDungeon ? " (Active)" : "";
+    const lockText = locked ? `Locked (Lv${dungeon.unlockLevel})` : "Unlocked";
+    return `<div>${dungeon.displayName}${stateText} | ${lockText} | Waves: ${waveCount} <button type="button" data-enter-dungeon-key="${dungeon.dungeonKey}" ${locked ? "disabled" : ""}>Enter</button></div>`;
+  }).join("");
 }
 
 function showCurrentEncounter(player) {
@@ -421,6 +485,22 @@ async function loadAreas() {
   syncPreferredEnemyUi(null);
 }
 
+async function loadDungeons() {
+  const response = await fetch("/api/dungeons");
+  if (!response.ok) {
+    currentDungeons = [];
+    syncDungeonListUi(null);
+    return;
+  }
+
+  const text = await response.text();
+  const dungeons = JSON.parse(text);
+  const normalizedDungeons = Array.isArray(dungeons)
+    ? dungeons.map(normalizeDungeon).filter(dungeon => dungeon.dungeonKey.length > 0)
+    : [];
+  currentDungeons = normalizedDungeons;
+}
+
 function showPlayerStatus(player) {
   if (!player) {
     playerStatusIdElement.textContent = "-";
@@ -438,6 +518,7 @@ function showPlayerStatus(player) {
     syncPreferredEnemyUi(null);
     syncPowerStrikeUi(null);
     syncAreaSelectUi(null);
+    syncDungeonListUi(null);
     showCurrentEncounter(null);
     return;
   }
@@ -456,6 +537,7 @@ function showPlayerStatus(player) {
   playerStatusUpdatedAtElement.textContent = player.updatedAt;
   syncPowerStrikeUi(player);
   syncAreaSelectUi(player);
+  syncDungeonListUi(player);
   syncPreferredEnemyUi(player);
 }
 
@@ -511,6 +593,43 @@ async function setCurrentArea() {
   showResult(player);
 }
 
+async function enterDungeon(dungeonKey) {
+  const normalizedDungeonKey = typeof dungeonKey === "string" ? dungeonKey.trim().toLowerCase() : "";
+  if (!normalizedDungeonKey) {
+    return;
+  }
+
+  const id = playerIdInput.value;
+  const response = await fetch(`/api/players/${encodeURIComponent(id)}/enter-dungeon/${encodeURIComponent(normalizedDungeonKey)}`, {
+    method: "POST"
+  });
+
+  const text = await response.text();
+  if (!response.ok) {
+    let message = "Enter dungeon failed.";
+    try {
+      const errorPayload = JSON.parse(text);
+      if (errorPayload?.message) {
+        message = errorPayload.message;
+      }
+    } catch {
+      // keep fallback message
+    }
+
+    writeLastResultMessages([message]);
+    showResult({ error: `Enter dungeon failed (${response.status})`, detail: text });
+    return;
+  }
+
+  const player = JSON.parse(text);
+  showPlayerStatus(player);
+  showCurrentEncounter(player);
+  showCurrentEnemy(player);
+  await loadHoldings(player.id);
+  writeLastResultMessages([`Entered dungeon: ${player.currentEncounter?.encounterName ?? normalizedDungeonKey}.`]);
+  showResult(player);
+}
+
 function formatHoldingRow(holding) {
   const displayName = typeof holding?.displayName === "string" && holding.displayName.trim().length > 0
     ? holding.displayName.trim()
@@ -551,6 +670,7 @@ async function loadHoldings(playerId) {
 async function loadPlayer() {
   stopAutoFight();
   await loadAreas();
+  await loadDungeons();
   const id = playerIdInput.value;
   const response = await fetch(`/api/players/${encodeURIComponent(id)}`);
   const text = await response.text();
@@ -576,6 +696,7 @@ async function createPlayer() {
   stopAutoFight();
   const name = playerNameInput.value.trim();
   await loadAreas();
+  await loadDungeons();
   const response = await fetch("/api/players", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -1212,6 +1333,19 @@ shopItemsContainerElement.addEventListener("click", event => {
 
   buyShopItem(itemKey);
 });
+dungeonListContainerElement.addEventListener("click", event => {
+  const target = event.target;
+  if (!(target instanceof HTMLElement)) {
+    return;
+  }
+
+  const dungeonKey = target.getAttribute("data-enter-dungeon-key");
+  if (!dungeonKey) {
+    return;
+  }
+
+  enterDungeon(dungeonKey);
+});
 startAutoFightButton.addEventListener("click", startAutoFight);
 stopAutoFightButton.addEventListener("click", stopAutoFight);
 autoUseFoodCheckbox.addEventListener("change", setAutoUseFoodStatus);
@@ -1222,8 +1356,10 @@ powerStrikeCheckbox.addEventListener("change", setPowerStrikeEnabled);
 setAutoFightStatus(false);
 setAutoUseFoodStatus();
 loadAreas();
+loadDungeons();
 loadShopItems();
 syncPreferredEnemyUi(null);
 syncPowerStrikeUi(null);
+syncDungeonListUi(null);
 showCurrentEncounter(null);
 showHoldings([]);

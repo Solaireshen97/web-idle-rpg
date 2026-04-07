@@ -127,6 +127,27 @@ app.MapGet("/api/areas", async (IHttpClientFactory httpClientFactory) =>
         : Results.Ok(areas);
 });
 
+app.MapGet("/api/dungeons", async (IHttpClientFactory httpClientFactory) =>
+{
+    var serverApi = httpClientFactory.CreateClient("ServerApi");
+    var response = await serverApi.GetAsync("/api/dungeons");
+
+    if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+    {
+        return Results.NotFound();
+    }
+
+    if (!response.IsSuccessStatusCode)
+    {
+        return await ForwardResponseAsContentAsync(response);
+    }
+
+    var dungeons = await response.Content.ReadFromJsonAsync<DungeonDefinitionDto[]>();
+    return dungeons is null
+        ? Results.StatusCode(StatusCodes.Status502BadGateway)
+        : Results.Ok(dungeons);
+});
+
 app.MapGet("/api/shop/items/food", async (IHttpClientFactory httpClientFactory) =>
 {
     var serverApi = httpClientFactory.CreateClient("ServerApi");
@@ -335,6 +356,27 @@ app.MapPost("/api/players/{id:int}/fight", async (IHttpClientFactory httpClientF
     return fightResult is null
         ? Results.StatusCode(StatusCodes.Status502BadGateway)
         : Results.Ok(fightResult);
+});
+
+app.MapPost("/api/players/{id:int}/enter-dungeon/{dungeonKey}", async (IHttpClientFactory httpClientFactory, int id, string dungeonKey) =>
+{
+    var serverApi = httpClientFactory.CreateClient("ServerApi");
+    var response = await serverApi.PostAsync($"/api/players/{id}/enter-dungeon/{Uri.EscapeDataString(dungeonKey)}", content: null);
+
+    if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+    {
+        return Results.NotFound();
+    }
+
+    if (!response.IsSuccessStatusCode)
+    {
+        return await ForwardResponseAsContentAsync(response);
+    }
+
+    var player = await response.Content.ReadFromJsonAsync<PlayerDto>();
+    return player is null
+        ? Results.StatusCode(StatusCodes.Status502BadGateway)
+        : Results.Ok(player);
 });
 
 app.Run();
