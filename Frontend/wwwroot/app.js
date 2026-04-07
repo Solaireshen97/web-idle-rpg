@@ -60,24 +60,73 @@ const preferredEnemyDisplayNameByKey = {
   goblin: "Goblin"
 };
 
-function getNormalizedPreferredEnemyKey(preferredEnemyKey) {
+function getNormalizedPreferredEnemyKey(preferredEnemyKey, allowedEnemyKeys = null) {
   if (typeof preferredEnemyKey !== "string") {
     return defaultPreferredEnemyKey;
   }
 
   const normalized = preferredEnemyKey.trim().toLowerCase();
-  return Object.prototype.hasOwnProperty.call(preferredEnemyDisplayNameByKey, normalized)
+  if (!normalized) {
+    return defaultPreferredEnemyKey;
+  }
+
+  if (!Array.isArray(allowedEnemyKeys) || allowedEnemyKeys.length <= 0) {
+    return Object.prototype.hasOwnProperty.call(preferredEnemyDisplayNameByKey, normalized)
+      ? normalized
+      : defaultPreferredEnemyKey;
+  }
+
+  return allowedEnemyKeys.includes(normalized)
     ? normalized
     : defaultPreferredEnemyKey;
 }
 
 function getPreferredEnemyDisplayName(preferredEnemyKey) {
   const normalizedKey = getNormalizedPreferredEnemyKey(preferredEnemyKey);
-  return preferredEnemyDisplayNameByKey[normalizedKey];
+  if (Object.prototype.hasOwnProperty.call(preferredEnemyDisplayNameByKey, normalizedKey)) {
+    return preferredEnemyDisplayNameByKey[normalizedKey];
+  }
+
+  return humanizeHoldingItemKey(normalizedKey);
+}
+
+function getCurrentArea(player) {
+  if (currentAreas.length <= 0) {
+    return null;
+  }
+
+  const playerAreaKey = typeof player?.currentAreaKey === "string" && player.currentAreaKey.trim().length > 0
+    ? player.currentAreaKey.trim().toLowerCase()
+    : "";
+  const fallbackArea = currentAreas.find(area => area.isStartingArea) ?? currentAreas[0];
+  return currentAreas.find(area => area.areaKey === playerAreaKey) ?? fallbackArea;
+}
+
+function getPreferredEnemyOptionsForArea(area) {
+  const options = [defaultPreferredEnemyKey];
+  if (!area) {
+    return options;
+  }
+
+  const areaEnemyKeys = Array.isArray(area.normalEnemyKeys) ? area.normalEnemyKeys : [];
+  for (const enemyKey of areaEnemyKeys) {
+    const normalizedEnemyKey = typeof enemyKey === "string" ? enemyKey.trim().toLowerCase() : "";
+    if (normalizedEnemyKey !== defaultPreferredEnemyKey && !options.includes(normalizedEnemyKey)) {
+      options.push(normalizedEnemyKey);
+    }
+  }
+
+  return options;
 }
 
 function syncPreferredEnemyUi(player) {
-  const preferredEnemyKey = getNormalizedPreferredEnemyKey(player?.preferredEnemyKey);
+  const currentArea = getCurrentArea(player);
+  const preferredEnemyOptions = getPreferredEnemyOptionsForArea(currentArea);
+  preferredEnemySelect.innerHTML = preferredEnemyOptions
+    .map(enemyKey => `<option value="${enemyKey}">${getPreferredEnemyDisplayName(enemyKey)}</option>`)
+    .join("");
+
+  const preferredEnemyKey = getNormalizedPreferredEnemyKey(player?.preferredEnemyKey, preferredEnemyOptions);
   currentPreferredEnemyKey = preferredEnemyKey;
   preferredEnemySelect.value = preferredEnemyKey;
   const preferredEnemyName = getPreferredEnemyDisplayName(preferredEnemyKey);
@@ -105,7 +154,17 @@ function normalizeArea(rawArea) {
     : areaKey;
   const unlockLevel = Number.isFinite(rawArea?.unlockLevel) ? rawArea.unlockLevel : 1;
   const isStartingArea = !!rawArea?.isStartingArea;
-  return { areaKey, displayName, unlockLevel, isStartingArea };
+  const normalEnemyKeys = Array.isArray(rawArea?.normalEnemyKeys)
+    ? rawArea.normalEnemyKeys
+      .filter(enemyKey => typeof enemyKey === "string" && enemyKey.trim().length > 0)
+      .map(enemyKey => enemyKey.trim().toLowerCase())
+    : [];
+  const dungeonKeys = Array.isArray(rawArea?.dungeonKeys)
+    ? rawArea.dungeonKeys
+      .filter(dungeonKey => typeof dungeonKey === "string" && dungeonKey.trim().length > 0)
+      .map(dungeonKey => dungeonKey.trim().toLowerCase())
+    : [];
+  return { areaKey, displayName, unlockLevel, isStartingArea, normalEnemyKeys, dungeonKeys };
 }
 
 function syncAreaSelectUi(player) {
@@ -116,11 +175,7 @@ function syncAreaSelectUi(player) {
   }
 
   const playerLevel = Number.isFinite(player?.level) ? player.level : 1;
-  const playerAreaKey = typeof player?.currentAreaKey === "string" && player.currentAreaKey.trim().length > 0
-    ? player.currentAreaKey.trim().toLowerCase()
-    : "";
-  const fallbackArea = currentAreas.find(area => area.isStartingArea) ?? currentAreas[0];
-  const selectedArea = currentAreas.find(area => area.areaKey === playerAreaKey) ?? fallbackArea;
+  const selectedArea = getCurrentArea(player);
 
   currentAreaSelect.innerHTML = currentAreas.map(area => {
     const locked = playerLevel < area.unlockLevel;
@@ -128,8 +183,10 @@ function syncAreaSelectUi(player) {
     return `<option value="${area.areaKey}" ${locked ? "disabled" : ""}>${area.displayName}${lockSuffix}</option>`;
   }).join("");
 
-  currentAreaSelect.value = selectedArea.areaKey;
-  currentAreaStatusElement.textContent = `Current Area: ${selectedArea.displayName}`;
+  if (selectedArea) {
+    currentAreaSelect.value = selectedArea.areaKey;
+    currentAreaStatusElement.textContent = `Current Area: ${selectedArea.displayName}`;
+  }
 }
 
 function showCurrentEncounter(player) {
@@ -335,6 +392,7 @@ async function loadAreas() {
     ? areas.map(normalizeArea).filter(area => area.areaKey.length > 0)
     : [];
   currentAreas = normalizedAreas;
+  syncPreferredEnemyUi(null);
 }
 
 function showPlayerStatus(player) {
@@ -367,12 +425,12 @@ function showPlayerStatus(player) {
   playerStatusAttackElement.textContent = player.attack;
   playerStatusMaxHpElement.textContent = player.maxHp;
   playerStatusCurrentHpElement.textContent = player.currentHp;
-  playerStatusPreferredEnemyElement.textContent = getPreferredEnemyDisplayName(player.preferredEnemyKey);
+  playerStatusPreferredEnemyElement.textContent = "-";
   playerStatusCreatedAtElement.textContent = player.createdAt;
   playerStatusUpdatedAtElement.textContent = player.updatedAt;
-  syncPreferredEnemyUi(player);
   syncPowerStrikeUi(player);
   syncAreaSelectUi(player);
+  syncPreferredEnemyUi(player);
 }
 
 function showCurrentEnemy(player) {
@@ -921,7 +979,11 @@ async function buyShopItem(itemKey) {
 async function setPreferredEnemy() {
   const id = playerIdInput.value;
   const previousPreferredEnemyKey = currentPreferredEnemyKey;
-  const enemyKey = getNormalizedPreferredEnemyKey(preferredEnemySelect.value);
+  const currentArea = getCurrentArea({
+    currentAreaKey: typeof currentAreaSelect.value === "string" ? currentAreaSelect.value : ""
+  });
+  const preferredEnemyOptions = getPreferredEnemyOptionsForArea(currentArea);
+  const enemyKey = getNormalizedPreferredEnemyKey(preferredEnemySelect.value, preferredEnemyOptions);
   const response = await fetch(`/api/players/${encodeURIComponent(id)}/preferred-enemy`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
